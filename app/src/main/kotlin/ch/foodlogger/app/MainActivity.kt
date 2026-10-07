@@ -1,5 +1,6 @@
 package ch.foodlogger.app
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -7,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.health.connect.client.PermissionController
 import ch.foodlogger.app.ui.FoodLoggerApp
@@ -20,12 +23,22 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
     private lateinit var requestPermissions: ActivityResultLauncher<Set<String>>
+    private lateinit var takeLabelPhoto: ActivityResultLauncher<Uri>
+    private lateinit var pickLabelPhoto: ActivityResultLauncher<PickVisualMediaRequest>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestPermissions = registerForActivityResult(
             PermissionController.createRequestPermissionResultContract(),
         ) { viewModel.refresh() }
+        // The camera app takes the photo, so FoodLogger needs no CAMERA permission. The file is always the same,
+        // so its URI can be rebuilt here even if the process was restarted while the camera was open.
+        takeLabelPhoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+            if (saved) viewModel.scanLabel(viewModel.labelReader.photoUri())
+        }
+        pickLabelPhoto = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            uri?.let(viewModel::scanLabel)
+        }
 
         enableEdgeToEdge()
         setContent {
@@ -33,6 +46,8 @@ class MainActivity : ComponentActivity() {
                 FoodLoggerApp(
                     viewModel = viewModel,
                     onScan = ::scan,
+                    onPhotographLabel = ::photographLabel,
+                    onPickLabel = ::pickLabel,
                     onGrantPermission = { requestPermissions.launch(HealthConnectSink.PERMISSIONS) },
                     onInstallHealthConnect = ::openHealthConnectInStore,
                 )
@@ -55,6 +70,18 @@ class MainActivity : ComponentActivity() {
             .startScan()
             .addOnSuccessListener { barcode -> barcode.rawValue?.let(viewModel::onScanned) }
     }
+
+    private fun photographLabel() {
+        try {
+            takeLabelPhoto.launch(viewModel.labelReader.photoUri())
+        } catch (e: ActivityNotFoundException) {
+            // No camera app: an existing photo still works.
+            pickLabel()
+        }
+    }
+
+    private fun pickLabel() =
+        pickLabelPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
 
     private fun openHealthConnectInStore() {
         val uri = Uri.parse(

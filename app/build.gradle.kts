@@ -74,5 +74,8 @@ dependencies {
     implementation("androidx.health.connect:connect-client:1.1.0")
     // Google code scanner: Play services provides the camera UI, so no CAMERA permission is needed.
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    // On-device text recognition for nutrition labels, also delivered by Play services (keeps the APK small).
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
 }

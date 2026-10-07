@@ -32,6 +32,8 @@ import ch.foodlogger.app.Screen
 fun FoodLoggerApp(
     viewModel: MainViewModel,
     onScan: () -> Unit,
+    onPhotographLabel: () -> Unit,
+    onPickLabel: () -> Unit,
     onGrantPermission: () -> Unit,
     onInstallHealthConnect: () -> Unit,
 ) {
@@ -85,6 +87,11 @@ fun FoodLoggerApp(
             is Screen.Manual -> ManualEntryScreen(
                 draft = screen.draft,
                 hint = screen.hint,
+                scan = screen.scan,
+                scanId = screen.scanId,
+                scanning = screen.scanning,
+                onPhotographLabel = onPhotographLabel,
+                onPickLabel = onPickLabel,
                 onContinue = viewModel::confirmManual,
                 modifier = modifier,
             )

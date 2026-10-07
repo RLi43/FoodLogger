@@ -1,11 +1,13 @@
 package ch.foodlogger.app
 
 import android.app.Application
+import android.net.Uri
 import android.os.LocaleList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ch.foodlogger.core.AppRelease
 import ch.foodlogger.core.Barcodes
+import ch.foodlogger.core.LabelScan
 import ch.foodlogger.core.Journal
 import ch.foodlogger.core.LoggedEntry
 import ch.foodlogger.core.MealSlot
@@ -27,8 +29,17 @@ sealed interface Screen {
     data class Loading(val barcode: String) : Screen
     data class Portion(val product: Product) : Screen
 
-    /** Manual entry of per-100 g values, optionally pre-filled from [draft]. */
-    data class Manual(val draft: Product, val hint: String? = null) : Screen
+    /**
+     * Manual entry of per-100 g values, optionally pre-filled from [draft].
+     * [scan] holds values read from a label photo; [scanId] changes with every new scan so the form applies it once.
+     */
+    data class Manual(
+        val draft: Product,
+        val hint: String? = null,
+        val scan: LabelScan? = null,
+        val scanId: Int = 0,
+        val scanning: Boolean = false,
+    ) : Screen
 }
 
 /** A snackbar message; [undoRecordId] adds an "Undo" action that deletes that record. */
@@ -54,6 +65,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val journalStore = TextFileStore(application, "journal.json")
     private var journal: List<LoggedEntry> = emptyList()
     private val updater = AppUpdater(application)
+    val labelReader = LabelReader(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -154,6 +166,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun editProduct(product: Product) = navigate(Screen.Manual(product))
 
     fun confirmManual(product: Product) = navigate(Screen.Portion(product))
+
+    /** Reads the nutrition label photo at [uri] and hands the values to the manual form that is open. */
+    fun scanLabel(uri: Uri) {
+        val screen = _state.value.screen as? Screen.Manual ?: return
+        navigate(screen.copy(scanning = true))
+        viewModelScope.launch {
+            val scan = try {
+                labelReader.read(uri)
+            } catch (e: Exception) {
+                // IOException for an unreadable image, MlKitException while the model is still downloading.
+                updateManual(screen) { it.copy(scanning = false) }
+                show("Could not read the photo: ${e.message ?: e.javaClass.simpleName}")
+                return@launch
+            }
+            if (scan.valueCount == 0 && scan.servingGrams == null) {
+                updateManual(screen) { it.copy(scanning = false) }
+                show("No nutrition values found. Try a sharp photo of just the table, taken straight on.")
+                return@launch
+            }
+            updateManual(screen) { it.copy(scanning = false, scan = scan, scanId = it.scanId + 1) }
+            show("Filled ${scan.valueCount} values from the label. Please check them.")
+        }
+    }
+
+    /** Applies [change] if the manual form for [screen]'s product is still open. */
+    private fun updateManual(screen: Screen.Manual, change: (Screen.Manual) -> Screen.Manual) = _state.update { state ->
+        val current = state.screen as? Screen.Manual
+        if (current != null && current.draft.barcode == screen.draft.barcode) state.copy(screen = change(current)) else state
+    }
 
     fun selectRecent(product: Product) = navigate(Screen.Portion(product))
 
