@@ -28,9 +28,16 @@ Install the APK from the [latest release](https://github.com/RLi43/FoodLogger/re
 to `main` publishes a release `build-<n>`, the home screen shows *Update available*, and *Install update*
 downloads it and hands it to Android's installer (allow FoodLogger to install apps the first time).
 
-Every push, on any branch, also builds a debug APK in GitHub Actions (*Actions → Build → Artifacts →
-foodlogger-debug-apk*) for trying a branch before it is merged.
-Builds are signed with the committed `app/debug.keystore`, so new builds install over old ones.
+Every push, on any branch, also builds the APK in GitHub Actions (*Actions → Build → Artifacts →
+foodlogger-apk*) for trying a branch before it is merged.
+
+### Signing
+
+CI signs with a private release key stored only in the repository's Actions secrets
+`SIGNING_KEYSTORE_BASE64` (base64 of a PKCS12 keystore, key alias `foodlogger`) and `SIGNING_PASSWORD`.
+Android only accepts updates signed with the same key, so keep a backup of it: losing it means
+uninstalling the app (and its local Today/Recent lists) to switch to a new key. Builds without the
+secrets (local builds, forks) produce an unsigned release APK; builds of `main` fail instead.
 
 Requires Android 8.0+, Google Play services, and Health Connect (built in from Android 14; from the Play Store on older versions).
 

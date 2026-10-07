@@ -19,17 +19,24 @@ android {
         versionName = "0.1.$build"
     }
 
+    // The release key lives only in GitHub Actions secrets; CI decodes it to the file named by
+    // SIGNING_KEYSTORE. Without it (local builds, forks) the release APK is left unsigned.
+    val releaseKeystore = System.getenv("SIGNING_KEYSTORE")
     signingConfigs {
-        // Committed debug key (standard "android" passwords, not a secret) so every CI build
-        // can be installed over the previous one without uninstalling.
-        getByName("debug") {
-            storeFile = file("debug.keystore")
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("SIGNING_PASSWORD")
+                keyAlias = "foodlogger"
+                keyPassword = System.getenv("SIGNING_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -59,6 +66,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.activity:activity-compose:1.10.1")
+    // Play services pulls in fragment 1.0; the ActivityResult API needs 1.3+ (lint InvalidFragmentVersionForActivityResult).
+    implementation("androidx.fragment:fragment:1.8.5")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.2")
 
