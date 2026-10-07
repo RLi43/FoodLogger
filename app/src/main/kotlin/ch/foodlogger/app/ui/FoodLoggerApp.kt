@@ -32,6 +32,7 @@ import ch.foodlogger.app.Screen
 fun FoodLoggerApp(
     viewModel: MainViewModel,
     onScan: () -> Unit,
+    onScanPhoto: () -> Unit,
     onPhotographLabel: () -> Unit,
     onPickLabel: () -> Unit,
     onGrantPermission: () -> Unit,
@@ -61,6 +62,7 @@ fun FoodLoggerApp(
             Screen.Home -> HomeScreen(
                 state = state,
                 onScan = onScan,
+                onScanPhoto = onScanPhoto,
                 onManual = viewModel::startManualEntry,
                 onRecent = viewModel::selectRecent,
                 onRemoveRecent = viewModel::removeRecent,

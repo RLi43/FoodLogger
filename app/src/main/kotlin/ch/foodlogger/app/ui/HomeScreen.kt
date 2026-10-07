@@ -3,6 +3,7 @@ package ch.foodlogger.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -41,6 +42,7 @@ import kotlin.math.roundToInt
 fun HomeScreen(
     state: UiState,
     onScan: () -> Unit,
+    onScanPhoto: () -> Unit,
     onManual: () -> Unit,
     onRecent: (Product) -> Unit,
     onRemoveRecent: (Product) -> Unit,
@@ -78,8 +80,13 @@ fun HomeScreen(
             }
         }
         item {
-            OutlinedButton(onClick = onManual, modifier = Modifier.fillMaxWidth()) {
-                Text("Enter manually")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onScanPhoto, modifier = Modifier.weight(1f)) {
+                    Text("Barcode from photo")
+                }
+                OutlinedButton(onClick = onManual, modifier = Modifier.weight(1f)) {
+                    Text("Enter manually")
+                }
             }
         }
         if (state.today.isNotEmpty()) {

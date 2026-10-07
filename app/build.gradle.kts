@@ -76,6 +76,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     // On-device text recognition for nutrition labels, also delivered by Play services (keeps the APK small).
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    // Barcodes in saved photos (the code scanner above only works with the live camera).
+    implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
 }
