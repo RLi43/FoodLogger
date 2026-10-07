@@ -2,24 +2,32 @@ package ch.foodlogger.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ch.foodlogger.app.MainViewModel
+import ch.foodlogger.core.LabelScan
 import ch.foodlogger.core.Nutrients
 import ch.foodlogger.core.Product
 
@@ -28,6 +36,11 @@ import ch.foodlogger.core.Product
 fun ManualEntryScreen(
     draft: Product,
     hint: String?,
+    scan: LabelScan?,
+    scanId: Int,
+    scanning: Boolean,
+    onPhotographLabel: () -> Unit,
+    onPickLabel: () -> Unit,
     onContinue: (Product) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -45,6 +58,25 @@ fun ManualEntryScreen(
     val protein = rememberSaveable(key) { mutableStateOf(formatNumber(n.protein)) }
     val salt = rememberSaveable(key) { mutableStateOf(formatNumber(n.salt)) }
 
+    // Values read from a label photo replace what is in the form; values the label did not show are kept.
+    // The applied id is saved so a rotation does not apply the same scan over later edits.
+    val appliedScan = rememberSaveable(key) { mutableStateOf(0) }
+    LaunchedEffect(scanId) {
+        if (scan == null || scanId == appliedScan.value) return@LaunchedEffect
+        appliedScan.value = scanId
+        fun MutableState<String>.fill(value: Double?) { if (value != null) this.value = formatNumber(value) }
+        val p = scan.per100g
+        serving.fill(scan.servingGrams)
+        kcal.fill(p.kcal?.let { Math.round(it).toDouble() })
+        fat.fill(p.fat)
+        saturated.fill(p.saturatedFat)
+        carbs.fill(p.carbs)
+        sugar.fill(p.sugar)
+        fiber.fill(p.fiber)
+        protein.fill(p.protein)
+        salt.fill(p.salt)
+    }
+
     val valid = name.value.isNotBlank() && parseNumber(kcal.value) != null
 
     Column(
@@ -59,6 +91,11 @@ fun ManualEntryScreen(
         TextInput(brand, "Brand")
         NumberInput(serving, "Serving size (g), optional")
         Text("Per 100 g, as printed on the label", style = MaterialTheme.typography.titleSmall)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onPhotographLabel, enabled = !scanning) { Text("Scan nutrition label") }
+            TextButton(onClick = onPickLabel, enabled = !scanning) { Text("From gallery") }
+            if (scanning) CircularProgressIndicator(Modifier.size(24.dp))
+        }
         NumberInput(kcal, "Energy (kcal) *")
         NumberInput(fat, "Fat (g)")
         NumberInput(saturated, "of which saturated (g)")

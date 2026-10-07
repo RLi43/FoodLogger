@@ -15,6 +15,10 @@ which has decent Swiss coverage.
    fibre, protein and sodium for that portion.
 
 If a product is missing or has no nutrition values, a per-100 g form opens (pre-filled with what is known).
+There, **Scan nutrition label** takes a photo of the table (or *From gallery* picks one) and fills in the
+values with on-device text recognition (ML Kit via Play services, nothing is uploaded). The parser reads German,
+French, Italian and English labels, including the multilingual Swiss ones, takes the per-100 g column and
+converts kJ to kcal when only kJ is readable. Check the values before continuing: OCR can misread digits.
 
 The home screen lists **today's entries logged with FoodLogger** (with a small total) and lets you delete
 them; right after logging, the snackbar offers **Undo**. The app only knows its own entries: it keeps the
@@ -45,11 +49,9 @@ Requires Android 8.0+, Google Play services, and Health Connect (built in from A
 
 | Path | What |
 | --- | --- |
-| `core/` | Plain Kotlin/JVM build: Open Food Facts parsing, nutrient maths, barcode validation, recent list, journal of logged entries. Tested with `./gradlew -p core test`, no Android SDK needed. |
+| `core/` | Plain Kotlin/JVM build: Open Food Facts parsing, nutrition label parsing, nutrient maths, barcode validation, recent list, journal of logged entries. Tested with `./gradlew -p core test`, no Android SDK needed. |
 | `app/` | Android app (Jetpack Compose). `HealthConnectSink` writes the records; `FoodSink` is the seam for another destination (e.g. the Google Health cloud API). |
 
 ## Roadmap
 
-- v2: scan the nutrition label (on-device text recognition) to pre-fill the manual form; the label parser has
-  to understand German, French and Italian labels and kJ/kcal.
 - Optional: Open Food Repo as a second Swiss data source (needs an API key), contributing missing products back to Open Food Facts.
