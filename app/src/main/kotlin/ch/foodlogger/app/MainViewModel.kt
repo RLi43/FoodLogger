@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.LocaleList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import ch.foodlogger.core.AppRelease
 import ch.foodlogger.core.Barcodes
 import ch.foodlogger.core.Journal
 import ch.foodlogger.core.LoggedEntry
@@ -40,6 +41,9 @@ data class UiState(
     val today: List<LoggedEntry> = emptyList(),
     val health: HealthStatus = HealthStatus.Checking,
     val message: Message? = null,
+    /** A newer build published on GitHub, if any. */
+    val update: AppRelease? = null,
+    val updating: Boolean = false,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -49,6 +53,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val recentStore = TextFileStore(application, "recent.json")
     private val journalStore = TextFileStore(application, "journal.json")
     private var journal: List<LoggedEntry> = emptyList()
+    private val updater = AppUpdater(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -59,6 +64,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             journal = Journal.decode(journalStore.read())
             _state.update { it.copy(recent = recent) }
             refresh()
+        }
+        viewModelScope.launch {
+            val release = updater.newerRelease()
+            _state.update { it.copy(update = release) }
+        }
+    }
+
+    fun installUpdate() {
+        val release = _state.value.update ?: return
+        _state.update { it.copy(updating = true) }
+        viewModelScope.launch {
+            try {
+                updater.install(release)
+            } catch (e: Exception) {
+                show("Update failed: ${e.message ?: e.javaClass.simpleName}")
+            } finally {
+                _state.update { it.copy(updating = false) }
+            }
         }
     }
 

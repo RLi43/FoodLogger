@@ -25,9 +25,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import ch.foodlogger.app.BuildConfig
 import ch.foodlogger.app.HealthStatus
 import ch.foodlogger.app.formatGrams
 import ch.foodlogger.app.UiState
+import ch.foodlogger.core.AppRelease
 import ch.foodlogger.core.Journal
 import ch.foodlogger.core.LoggedEntry
 import ch.foodlogger.core.Product
@@ -43,6 +45,7 @@ fun HomeScreen(
     onRecent: (Product) -> Unit,
     onRemoveRecent: (Product) -> Unit,
     onDeleteEntry: (LoggedEntry) -> Unit,
+    onInstallUpdate: () -> Unit,
     onGrantPermission: () -> Unit,
     onInstallHealthConnect: () -> Unit,
     modifier: Modifier = Modifier,
@@ -66,6 +69,9 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { HealthBanner(state.health, onGrantPermission, onInstallHealthConnect) }
+        state.update?.let { release ->
+            item { UpdateBanner(release, state.updating, onInstallUpdate) }
+        }
         item {
             Button(onClick = onScan, modifier = Modifier.fillMaxWidth().height(72.dp)) {
                 Text("Scan barcode", style = MaterialTheme.typography.titleLarge)
@@ -113,6 +119,28 @@ fun HomeScreen(
                     HorizontalDivider()
                 }
             }
+        }
+        item {
+            Text(
+                "FoodLogger build ${BuildConfig.VERSION_CODE}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 24.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpdateBanner(release: AppRelease, updating: Boolean, onInstall: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Update available: build ${release.versionCode}", style = MaterialTheme.typography.titleSmall)
+            if (release.notes.isNotEmpty()) Text(release.notes, style = MaterialTheme.typography.bodySmall)
+            Button(onClick = onInstall, enabled = !updating) { Text(if (updating) "Downloading…" else "Install update") }
         }
     }
 }

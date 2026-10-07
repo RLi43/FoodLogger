@@ -13,8 +13,10 @@ android {
         // Health Connect's Jetpack client requires API 26+.
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI passes the run number so every published build has a higher versionCode.
+        val build = (project.findProperty("buildNumber") as String?)?.toInt() ?: 1
+        versionCode = build
+        versionName = "0.1.$build"
     }
 
     signingConfigs {
@@ -38,6 +40,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
