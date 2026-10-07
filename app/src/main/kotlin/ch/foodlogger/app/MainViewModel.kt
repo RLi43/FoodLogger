@@ -3,6 +3,7 @@ package ch.foodlogger.app
 import android.app.Application
 import android.net.Uri
 import android.os.LocaleList
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ch.foodlogger.core.AppRelease
@@ -55,6 +56,7 @@ data class UiState(
     /** A newer build published on GitHub, if any. */
     val update: AppRelease? = null,
     val updating: Boolean = false,
+    val checkingUpdate: Boolean = false,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -65,6 +67,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val journalStore = TextFileStore(application, "journal.json")
     private var journal: List<LoggedEntry> = emptyList()
     private val updater = AppUpdater(application)
+    private var lastUpdateCheck: Long? = null
     val labelReader = LabelReader(application)
     private val photoBarcodeReader = PhotoBarcodeReader(application)
 
@@ -78,9 +81,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(recent = recent) }
             refresh()
         }
+    }
+
+    /**
+     * Looks for a newer GitHub release. Runs every time the app comes to the foreground (at most every
+     * [UPDATE_CHECK_INTERVAL_MS], to stay inside GitHub's unauthenticated rate limit) and when the user
+     * taps "Check for updates", which also reports "up to date" and errors.
+     */
+    fun checkForUpdate(manual: Boolean = false) {
+        if (_state.value.checkingUpdate) return
+        val now = SystemClock.elapsedRealtime()
+        val last = lastUpdateCheck
+        if (!manual && last != null && now - last < UPDATE_CHECK_INTERVAL_MS) return
+        lastUpdateCheck = now
+        _state.update { it.copy(checkingUpdate = true) }
         viewModelScope.launch {
-            val release = updater.newerRelease()
-            _state.update { it.copy(update = release) }
+            val result = updater.newerRelease()
+            // A failed check keeps the banner from an earlier successful one.
+            _state.update { it.copy(checkingUpdate = false, update = result.getOrElse { _ -> it.update }) }
+            if (manual) result.fold(
+                onSuccess = { release -> if (release == null) show("FoodLogger is up to date (build ${BuildConfig.VERSION_CODE})") },
+                onFailure = { e -> show("Couldn't check for updates: ${e.message ?: e.javaClass.simpleName}") },
+            )
         }
     }
 
@@ -278,6 +300,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         const val MANUAL_SOURCE = "Manual"
+        private const val UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000L
         private const val USER_AGENT = "FoodLogger-Android/0.1 (https://github.com/RLi43/FoodLogger)"
 
         /** Device languages first, then the Swiss national languages and English as fallbacks. */

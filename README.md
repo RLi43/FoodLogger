@@ -30,8 +30,10 @@ your full day.
 
 Install the APK from the [latest release](https://github.com/RLi43/FoodLogger/releases/latest) once
 (allow "install unknown apps" for your browser/file manager). After that the app updates itself: every push
-to `main` publishes a release `build-<n>`, the home screen shows *Update available*, and *Install update*
-downloads it and hands it to Android's installer (allow FoodLogger to install apps the first time).
+to `main` publishes a release `build-<n>`, and whenever the app comes to the foreground it checks for a
+newer one (at most every 5 minutes; *Check for updates* at the bottom of the home screen checks right away).
+The home screen then shows *Update available*, and *Install update* downloads it and hands it to Android's
+installer (allow FoodLogger to install apps the first time).
 
 Every push, on any branch, also builds the APK in GitHub Actions (*Actions → Build → Artifacts →
 foodlogger-apk*) for trying a branch before it is merged.
