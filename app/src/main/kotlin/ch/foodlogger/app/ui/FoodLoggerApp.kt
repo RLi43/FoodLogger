@@ -63,6 +63,7 @@ fun FoodLoggerApp(
                 onRecent = viewModel::selectRecent,
                 onRemoveRecent = viewModel::removeRecent,
                 onDeleteEntry = { viewModel.delete(it.recordId) },
+                onInstallUpdate = viewModel::installUpdate,
                 onGrantPermission = onGrantPermission,
                 onInstallHealthConnect = onInstallHealthConnect,
                 modifier = modifier,

@@ -23,8 +23,13 @@ your full day.
 
 ## Install
 
-Every push builds a debug APK in GitHub Actions (*Actions → Build → Artifacts → foodlogger-debug-apk*).
-Download it, unzip, and install it on the phone (allow "install unknown apps" for your browser/file manager).
+Install the APK from the [latest release](https://github.com/RLi43/FoodLogger/releases/latest) once
+(allow "install unknown apps" for your browser/file manager). After that the app updates itself: every push
+to `main` publishes a release `build-<n>`, the home screen shows *Update available*, and *Install update*
+downloads it and hands it to Android's installer (allow FoodLogger to install apps the first time).
+
+Every push, on any branch, also builds a debug APK in GitHub Actions (*Actions → Build → Artifacts →
+foodlogger-debug-apk*) for trying a branch before it is merged.
 Builds are signed with the committed `app/debug.keystore`, so new builds install over old ones.
 
 Requires Android 8.0+, Google Play services, and Health Connect (built in from Android 14; from the Play Store on older versions).

@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -21,10 +23,23 @@ jobs:
       - name: Test core
         run: ./gradlew -p core test --console=plain
 
+      # The run number becomes the versionCode, so each build is newer than the previous one.
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --console=plain
+        run: ./gradlew :app:assembleDebug -PbuildNumber=${{ github.run_number }} --console=plain
 
       - uses: actions/upload-artifact@v4
         with:
           name: foodlogger-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      # Builds of main become GitHub releases, which the app offers as in-app updates.
+      - name: Publish release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk foodlogger.apk
+          gh release create "build-${{ github.run_number }}" foodlogger.apk \
+            --target "$GITHUB_SHA" \
+            --title "Build ${{ github.run_number }}" \
+            --generate-notes
