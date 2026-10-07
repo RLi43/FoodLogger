@@ -17,5 +17,9 @@ data class FoodEntry(
  * cloud API writer can be added behind the same interface if it turns out to be needed.
  */
 interface FoodSink {
-    suspend fun log(entry: FoodEntry)
+    /** Writes the entry and returns the ID the store assigned to it. */
+    suspend fun log(entry: FoodEntry): String
+
+    /** Deletes a record previously returned by [log]. */
+    suspend fun delete(recordId: String)
 }

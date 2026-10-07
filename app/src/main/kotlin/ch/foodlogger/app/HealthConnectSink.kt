@@ -5,10 +5,14 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.MealType
 import androidx.health.connect.client.records.NutritionRecord
+import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.records.metadata.Metadata
+import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.Energy
 import androidx.health.connect.client.units.Mass
 import ch.foodlogger.core.MealSlot
+import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale
 
@@ -29,7 +33,7 @@ class HealthConnectSink(private val context: Context) : FoodSink {
         else -> HealthStatus.Unavailable
     }
 
-    override suspend fun log(entry: FoodEntry) {
+    override suspend fun log(entry: FoodEntry): String {
         val n = entry.product.per100g.forPortion(entry.grams)
         val offset = ZoneId.systemDefault().rules.getOffset(entry.time)
         val record = NutritionRecord(
@@ -50,7 +54,26 @@ class HealthConnectSink(private val context: Context) : FoodSink {
             protein = n.protein?.let(Mass::grams),
             sodium = n.sodium?.let(Mass::grams),
         )
-        client.insertRecords(listOf(record))
+        return client.insertRecords(listOf(record)).recordIdsList.single()
+    }
+
+    override suspend fun delete(recordId: String) {
+        client.deleteRecords(NutritionRecord::class, recordIdsList = listOf(recordId), clientRecordIdsList = emptyList())
+    }
+
+    /**
+     * IDs of this app's nutrition records in [start, end), or null when Health Connect does not
+     * let us read them (reading needs no extra permission on some versions, but not all).
+     */
+    suspend fun ownRecordIds(start: Instant, end: Instant): Set<String>? = try {
+        val request = ReadRecordsRequest(
+            recordType = NutritionRecord::class,
+            timeRangeFilter = TimeRangeFilter.between(start, end),
+            dataOriginFilter = setOf(DataOrigin(context.packageName)),
+        )
+        client.readRecords(request).records.map { it.metadata.id }.toSet()
+    } catch (e: SecurityException) {
+        null
     }
 
     companion object {

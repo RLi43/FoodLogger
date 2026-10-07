@@ -2,6 +2,7 @@ package ch.foodlogger.app.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.Modifier
+import ch.foodlogger.core.MealSlot
 
 fun Modifier.clickableRow(onClick: () -> Unit): Modifier = clickable(onClick = onClick)
 
@@ -14,3 +15,5 @@ fun formatNumber(value: Double?): String = when {
     value % 1.0 == 0.0 -> value.toLong().toString()
     else -> "%.2f".format(java.util.Locale.ROOT, value).trimEnd('0').trimEnd('.')
 }
+
+fun MealSlot.label(): String = name.lowercase().replaceFirstChar { it.uppercase() }

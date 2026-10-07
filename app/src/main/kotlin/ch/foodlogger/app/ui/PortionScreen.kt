@@ -80,7 +80,7 @@ fun PortionScreen(
                 FilterChip(
                     selected = meal == slot,
                     onClick = { meal = slot },
-                    label = { Text(slot.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                    label = { Text(slot.label()) },
                 )
             }
         }

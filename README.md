@@ -16,6 +16,11 @@ which has decent Swiss coverage.
 
 If a product is missing or has no nutrition values, a per-100 g form opens (pre-filled with what is known).
 
+The home screen lists **today's entries logged with FoodLogger** (with a small total) and lets you delete
+them; right after logging, the snackbar offers **Undo**. The app only knows its own entries: it keeps the
+record IDs Health Connect returns, so no read permission is needed. Google Health remains the place to see
+your full day.
+
 ## Install
 
 Every push builds a debug APK in GitHub Actions (*Actions → Build → Artifacts → foodlogger-debug-apk*).
@@ -28,7 +33,7 @@ Requires Android 8.0+, Google Play services, and Health Connect (built in from A
 
 | Path | What |
 | --- | --- |
-| `core/` | Plain Kotlin/JVM build: Open Food Facts parsing, nutrient maths, barcode validation, recent list. Tested with `./gradlew -p core test`, no Android SDK needed. |
+| `core/` | Plain Kotlin/JVM build: Open Food Facts parsing, nutrient maths, barcode validation, recent list, journal of logged entries. Tested with `./gradlew -p core test`, no Android SDK needed. |
 | `app/` | Android app (Jetpack Compose). `HealthConnectSink` writes the records; `FoodSink` is the seam for another destination (e.g. the Google Health cloud API). |
 
 ## Roadmap

@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         requestPermissions = registerForActivityResult(
             PermissionController.createRequestPermissionResultContract(),
-        ) { viewModel.refreshHealthStatus() }
+        ) { viewModel.refresh() }
 
         enableEdgeToEdge()
         setContent {
@@ -42,8 +42,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Permissions may have changed in the Health Connect settings while we were away.
-        viewModel.refreshHealthStatus()
+        // Permissions, the date or entries in Health Connect may have changed while we were away.
+        viewModel.refresh()
     }
 
     private fun scan() {

@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -37,10 +39,14 @@ fun FoodLoggerApp(
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(state.message) {
-        state.message?.let {
-            snackbar.showSnackbar(it)
-            viewModel.messageShown()
-        }
+        val message = state.message ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar(
+            message = message.text,
+            actionLabel = if (message.undoRecordId != null) "Undo" else null,
+            duration = SnackbarDuration.Short,
+        )
+        if (result == SnackbarResult.ActionPerformed) message.undoRecordId?.let(viewModel::delete)
+        viewModel.messageShown()
     }
     BackHandler(enabled = state.screen != Screen.Home) { viewModel.goHome() }
 
@@ -56,6 +62,7 @@ fun FoodLoggerApp(
                 onManual = viewModel::startManualEntry,
                 onRecent = viewModel::selectRecent,
                 onRemoveRecent = viewModel::removeRecent,
+                onDeleteEntry = { viewModel.delete(it.recordId) },
                 onGrantPermission = onGrantPermission,
                 onInstallHealthConnect = onInstallHealthConnect,
                 modifier = modifier,

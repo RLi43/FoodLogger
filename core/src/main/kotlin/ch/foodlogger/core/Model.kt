@@ -32,6 +32,15 @@ data class Nutrients(
 
     /** Nutrients of a [grams] portion when this instance is per 100 g. */
     fun forPortion(grams: Double): Nutrients = scaled(grams / 100)
+
+    /** Sum of two amounts; a value stays null only when it is unknown on both sides. */
+    operator fun plus(other: Nutrients): Nutrients {
+        fun add(a: Double?, b: Double?) = if (a == null && b == null) null else (a ?: 0.0) + (b ?: 0.0)
+        return Nutrients(
+            add(kcal, other.kcal), add(fat, other.fat), add(saturatedFat, other.saturatedFat), add(carbs, other.carbs),
+            add(sugar, other.sugar), add(fiber, other.fiber), add(protein, other.protein), add(salt, other.salt),
+        )
+    }
 }
 
 @Serializable
