@@ -20,12 +20,12 @@ import java.net.URL
  */
 class AppUpdater(private val context: Context) {
 
-    /** The latest release if it is newer than this build; null when up to date or unreachable. */
-    suspend fun newerRelease(): AppRelease? = withContext(Dispatchers.IO) {
+    /** The latest release if it is newer than this build, null when up to date, or the error. */
+    suspend fun newerRelease(): Result<AppRelease?> = withContext(Dispatchers.IO) {
         runCatching {
             val text = open(Releases.LATEST_URL).use { it.bufferedReader().readText() }
             Releases.parseLatest(text)?.takeIf { it.versionCode > BuildConfig.VERSION_CODE }
-        }.getOrNull()
+        }
     }
 
     /**
@@ -82,8 +82,15 @@ class InstallResultReceiver : BroadcastReceiver() {
                 }
                 confirm?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
-            // On success Android restarts the app with the new version; nothing to do.
-            PackageInstaller.STATUS_SUCCESS -> Unit
+            // On success Android restarts the app with the new version; the user cancelling needs no message.
+            PackageInstaller.STATUS_SUCCESS, PackageInstaller.STATUS_FAILURE_ABORTED -> Unit
+            // Android refuses an APK signed with another key, e.g. over a build from before release signing.
+            PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> Toast.makeText(
+                context,
+                "Update failed: this copy of FoodLogger is signed with a different key. " +
+                    "Uninstall it and install foodlogger.apk from the GitHub releases page once.",
+                Toast.LENGTH_LONG,
+            ).show()
             else -> {
                 val reason = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "unknown error"
                 Toast.makeText(context, "Update failed: $reason", Toast.LENGTH_LONG).show()

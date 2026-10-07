@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import ch.foodlogger.app.BuildConfig
@@ -48,6 +49,7 @@ fun HomeScreen(
     onRemoveRecent: (Product) -> Unit,
     onDeleteEntry: (LoggedEntry) -> Unit,
     onInstallUpdate: () -> Unit,
+    onCheckForUpdate: () -> Unit,
     onGrantPermission: () -> Unit,
     onInstallHealthConnect: () -> Unit,
     modifier: Modifier = Modifier,
@@ -128,12 +130,20 @@ fun HomeScreen(
             }
         }
         item {
-            Text(
-                "FoodLogger build ${BuildConfig.VERSION_CODE}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 24.dp),
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+            ) {
+                Text(
+                    "FoodLogger build ${BuildConfig.VERSION_CODE}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onCheckForUpdate, enabled = !state.checkingUpdate) {
+                    Text(if (state.checkingUpdate) "Checking…" else "Check for updates")
+                }
+            }
         }
     }
 }

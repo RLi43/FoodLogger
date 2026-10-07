@@ -64,6 +64,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Permissions, the date or entries in Health Connect may have changed while we were away.
         viewModel.refresh()
+        // A new build may have been published since the app was last in the foreground.
+        viewModel.checkForUpdate()
     }
 
     private fun scan() {
