@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var requestPermissions: ActivityResultLauncher<Set<String>>
     private lateinit var takeLabelPhoto: ActivityResultLauncher<Uri>
     private lateinit var pickLabelPhoto: ActivityResultLauncher<PickVisualMediaRequest>
+    private lateinit var pickBarcodePhoto: ActivityResultLauncher<PickVisualMediaRequest>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +40,9 @@ class MainActivity : ComponentActivity() {
         pickLabelPhoto = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             uri?.let(viewModel::scanLabel)
         }
+        pickBarcodePhoto = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            uri?.let(viewModel::scanBarcodePhoto)
+        }
 
         enableEdgeToEdge()
         setContent {
@@ -46,6 +50,7 @@ class MainActivity : ComponentActivity() {
                 FoodLoggerApp(
                     viewModel = viewModel,
                     onScan = ::scan,
+                    onScanPhoto = { pickBarcodePhoto.launch(imageOnly()) },
                     onPhotographLabel = ::photographLabel,
                     onPickLabel = ::pickLabel,
                     onGrantPermission = { requestPermissions.launch(HealthConnectSink.PERMISSIONS) },
@@ -80,8 +85,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun pickLabel() =
-        pickLabelPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    private fun pickLabel() = pickLabelPhoto.launch(imageOnly())
+
+    private fun imageOnly() = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
 
     private fun openHealthConnectInStore() {
         val uri = Uri.parse(

@@ -66,6 +66,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var journal: List<LoggedEntry> = emptyList()
     private val updater = AppUpdater(application)
     val labelReader = LabelReader(application)
+    private val photoBarcodeReader = PhotoBarcodeReader(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -158,6 +159,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             // Ignore the result if the user navigated away while it was loading.
             _state.update { if (it.screen == Screen.Loading(barcode)) it.copy(screen = next) else it }
+        }
+    }
+
+    /** Looks up the product whose barcode is in the saved photo at [uri]. */
+    fun scanBarcodePhoto(uri: Uri) {
+        viewModelScope.launch {
+            val barcode = try {
+                photoBarcodeReader.read(uri)
+            } catch (e: Exception) {
+                // IOException for an unreadable image, MlKitException while the model is still downloading.
+                show("Could not read the photo: ${e.message ?: e.javaClass.simpleName}")
+                return@launch
+            }
+            if (barcode == null) show("No product barcode found in the photo.") else onScanned(barcode)
         }
     }
 

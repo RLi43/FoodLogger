@@ -18,10 +18,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FoodLogger">
 
-        <!-- Lets Play services download the code scanner and text recognition modules at install time. -->
+        <!-- Lets Play services download the code scanner, barcode and text recognition modules at install time. -->
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
-            android:value="barcode_ui,ocr" />
+            android:value="barcode_ui,barcode,ocr" />
 
         <!-- Where the camera app writes the photo of a nutrition label. -->
         <provider

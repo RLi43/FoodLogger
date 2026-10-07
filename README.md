@@ -7,7 +7,8 @@ which has decent Swiss coverage.
 
 ## Flow
 
-1. **Scan barcode** (Google code scanner from Play services, no camera permission needed).
+1. **Scan barcode** (Google code scanner from Play services, no camera permission needed), or
+   **Barcode from photo** to read it from a picture in your gallery.
 2. Product is looked up on Open Food Facts (names in your device language, then de/fr/it/en).
    Products you logged before are re-used from the *Recent* list, also offline.
 3. Choose the amount (serving, 50/100/200 g or any value) and the meal (pre-selected from the time of day).
