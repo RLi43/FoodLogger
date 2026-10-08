@@ -63,9 +63,12 @@ fun FoodLoggerApp(
                 state = state,
                 onScan = onScan,
                 onScanPhoto = onScanPhoto,
-                onManual = viewModel::startManualEntry,
-                onRecent = viewModel::selectRecent,
-                onRemoveRecent = viewModel::removeRecent,
+                onSearch = viewModel::openSearch,
+                onReadLabel = viewModel::startLabelEntry,
+                onGenericEntry = viewModel::startGenericEntry,
+                onMyFoods = viewModel::openMyFoods,
+                onFood = viewModel::selectFood,
+                onRemoveFromHistory = viewModel::removeFromHistory,
                 onDeleteEntry = { viewModel.delete(it.recordId) },
                 onInstallUpdate = viewModel::installUpdate,
                 onCheckForUpdate = { viewModel.checkForUpdate(manual = true) },
@@ -93,9 +96,27 @@ fun FoodLoggerApp(
                 scan = screen.scan,
                 scanId = screen.scanId,
                 scanning = screen.scanning,
+                generic = screen.generic,
                 onPhotographLabel = onPhotographLabel,
                 onPickLabel = onPickLabel,
                 onContinue = viewModel::confirmManual,
+                modifier = modifier,
+            )
+            is Screen.Search -> SearchScreen(
+                screen = screen,
+                ownFoods = state.myFoods + state.history.map { it.product },
+                onQueryChange = viewModel::setSearchQuery,
+                onStoreChange = viewModel::setSearchStore,
+                onSearch = viewModel::runSearch,
+                onSelect = viewModel::selectSearchHit,
+                onReadLabel = viewModel::readLabelFromSearch,
+                modifier = modifier,
+            )
+            Screen.MyFoods -> MyFoodsScreen(
+                foods = state.myFoods,
+                onSelect = viewModel::selectFood,
+                onEdit = viewModel::editProduct,
+                onDelete = viewModel::deleteMyFood,
                 modifier = modifier,
             )
         }
@@ -105,5 +126,7 @@ fun FoodLoggerApp(
 private fun titleFor(screen: Screen) = when (screen) {
     Screen.Home, is Screen.Loading -> "FoodLogger"
     is Screen.Portion -> "How much?"
-    is Screen.Manual -> "Nutrition per 100 g"
+    is Screen.Manual -> if (screen.generic) "Generic food" else "Nutrition per 100 g"
+    is Screen.Search -> "Search packaged food"
+    Screen.MyFoods -> "My foods"
 }

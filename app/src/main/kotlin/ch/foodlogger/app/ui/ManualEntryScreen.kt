@@ -31,7 +31,10 @@ import ch.foodlogger.core.LabelScan
 import ch.foodlogger.core.Nutrients
 import ch.foodlogger.core.Product
 
-/** Per-100 g nutrition form for products that are missing or incomplete on Open Food Facts. */
+/**
+ * Per-100 g nutrition form for products that are missing or incomplete on Open Food Facts, and for
+ * [generic] foods (fruit, bakery, home cooking), which have no brand or label and so hide those fields.
+ */
 @Composable
 fun ManualEntryScreen(
     draft: Product,
@@ -39,6 +42,7 @@ fun ManualEntryScreen(
     scan: LabelScan?,
     scanId: Int,
     scanning: Boolean,
+    generic: Boolean,
     onPhotographLabel: () -> Unit,
     onPickLabel: () -> Unit,
     onContinue: (Product) -> Unit,
@@ -88,13 +92,17 @@ fun ManualEntryScreen(
             Text("Barcode ${draft.barcode}", style = MaterialTheme.typography.bodySmall)
         }
         TextInput(name, "Name *")
-        TextInput(brand, "Brand")
-        NumberInput(serving, "Serving size (g), optional")
-        Text("Per 100 g, as printed on the label", style = MaterialTheme.typography.titleSmall)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onPhotographLabel, enabled = !scanning) { Text("Scan nutrition label") }
-            TextButton(onClick = onPickLabel, enabled = !scanning) { Text("From gallery") }
-            if (scanning) CircularProgressIndicator(Modifier.size(24.dp))
+        if (!generic) TextInput(brand, "Brand")
+        NumberInput(serving, if (generic) "Typical portion (g), optional" else "Serving size (g), optional")
+        if (generic) {
+            Text("Per 100 g", style = MaterialTheme.typography.titleSmall)
+        } else {
+            Text("Per 100 g, as printed on the label", style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPhotographLabel, enabled = !scanning) { Text("Scan nutrition label") }
+                TextButton(onClick = onPickLabel, enabled = !scanning) { Text("From gallery") }
+                if (scanning) CircularProgressIndicator(Modifier.size(24.dp))
+            }
         }
         NumberInput(kcal, "Energy (kcal) *")
         NumberInput(fat, "Fat (g)")
