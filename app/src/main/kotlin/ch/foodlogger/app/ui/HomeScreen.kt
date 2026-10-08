@@ -13,6 +13,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -128,7 +129,13 @@ fun HomeScreen(
                     ProductRow(
                         product = product,
                         onClick = { onFood(product) },
-                        trailing = { TextButton(onClick = { onRemoveFromHistory(product) }) { Text("Remove") } },
+                        // Tapping the row logs it too, but an explicit button makes that discoverable.
+                        trailing = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                FilledTonalButton(onClick = { onFood(product) }) { Text("Log") }
+                                TextButton(onClick = { onRemoveFromHistory(product) }) { Text("Remove") }
+                            }
+                        },
                     )
                     HorizontalDivider()
                 }
