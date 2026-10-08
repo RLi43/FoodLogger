@@ -105,3 +105,52 @@ class OpenFoodFactsTest {
         assertNull(OpenFoodFacts.parse("1", "[1,2]", langs))
     }
 }
+
+class OpenFoodFactsSearchTest {
+    private val langs = listOf("de", "fr")
+
+    @Test
+    fun searchUrl() {
+        val url = OpenFoodFacts.searchUrl(" Caffè Latte ", langs)
+        assertTrue(url.startsWith("https://world.openfoodfacts.org/cgi/search.pl?"))
+        val params = url.substringAfter('?').split('&').associate { it.substringBefore('=') to java.net.URLDecoder.decode(it.substringAfter('='), "UTF-8") }
+        assertEquals("Caffè Latte", params["search_terms"])
+        assertEquals("countries", params["tagtype_0"])
+        assertEquals("switzerland", params["tag_0"])
+        assertEquals("unique_scans_n", params["sort_by"])
+        assertEquals("1", params["json"])
+        val fields = params.getValue("fields").split(",")
+        listOf("code", "nutriments", "quantity", "stores", "brands", "product_name_de").forEach { assertTrue(it in fields, it) }
+    }
+
+    @Test
+    fun parseSearchKeepsOrderAndPutsMissingNutritionLast() {
+        val json = """
+            {"count":3,"page":1,"products":[
+              {"code":"111","product_name":"Joghurt","quantity":"180 g"},
+              {"code":"222","product_name_de":"Joghurt Erdbeer","brands":"M-Budget, Migros","stores":"Migros","quantity":"500 g",
+               "nutriments":{"energy-kcal_100g":95}},
+              {"product_name":"No code"},
+              {"code":"333","product_name":"Yogourt","brands":"Coop","nutriments":{"energy-kj_100g":418.4}},
+              {"code":"222","product_name":"Duplicate"}
+            ]}
+        """
+        val hits = OpenFoodFacts.parseSearch(json, langs)
+        assertEquals(listOf("222", "333", "111"), hits.map { it.product.barcode })
+        val first = hits.first()
+        assertEquals("Joghurt Erdbeer", first.product.name)
+        assertEquals("M-Budget", first.product.brand)
+        assertEquals("M-Budget, Migros", first.brands)
+        assertEquals("Migros", first.stores)
+        assertEquals("500 g", first.quantity)
+        assertEquals(100.0, hits[1].product.per100g.kcal!!, 0.001)
+        assertTrue(!hits.last().hasNutrition)
+    }
+
+    @Test
+    fun parseSearchToleratesBadInput() {
+        assertEquals(emptyList(), OpenFoodFacts.parseSearch("", langs))
+        assertEquals(emptyList(), OpenFoodFacts.parseSearch("""{"products":"x"}""", langs))
+        assertEquals(emptyList(), OpenFoodFacts.parseSearch("""{"count":0}""", langs))
+    }
+}

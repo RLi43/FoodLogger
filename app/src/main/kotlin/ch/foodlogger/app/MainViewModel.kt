@@ -8,12 +8,18 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ch.foodlogger.core.AppRelease
 import ch.foodlogger.core.Barcodes
+import ch.foodlogger.core.FoodHistory
+import ch.foodlogger.core.FoodSearch
+import ch.foodlogger.core.HistoryEntry
 import ch.foodlogger.core.LabelScan
 import ch.foodlogger.core.Journal
 import ch.foodlogger.core.LoggedEntry
 import ch.foodlogger.core.MealSlot
+import ch.foodlogger.core.MyFoods
 import ch.foodlogger.core.Product
-import ch.foodlogger.core.RecentProducts
+import ch.foodlogger.core.SearchHit
+import ch.foodlogger.core.SearchLimit
+import ch.foodlogger.core.Store
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +39,7 @@ sealed interface Screen {
     /**
      * Manual entry of per-100 g values, optionally pre-filled from [draft].
      * [scan] holds values read from a label photo; [scanId] changes with every new scan so the form applies it once.
+     * A [generic] food (fruit, bakery, home cooking) has no brand and no label to read.
      */
     data class Manual(
         val draft: Product,
@@ -40,7 +47,23 @@ sealed interface Screen {
         val scan: LabelScan? = null,
         val scanId: Int = 0,
         val scanning: Boolean = false,
+        val generic: Boolean = false,
     ) : Screen
+
+    /**
+     * Search for packaged food in My foods, the food history and Open Food Facts.
+     * [hits] are the Open Food Facts results for [searchedQuery], not yet narrowed to [store].
+     */
+    data class Search(
+        val query: String = "",
+        val store: Store? = null,
+        val searchedQuery: String? = null,
+        val hits: List<SearchHit>? = null,
+        val searching: Boolean = false,
+        val error: String? = null,
+    ) : Screen
+
+    data object MyFoods : Screen
 }
 
 /** A snackbar message; [undoRecordId] adds an "Undo" action that deletes that record. */
@@ -48,7 +71,10 @@ data class Message(val text: String, val undoRecordId: String? = null)
 
 data class UiState(
     val screen: Screen = Screen.Home,
-    val recent: List<Product> = emptyList(),
+    /** Foods the user logs most, from any source, most used first. */
+    val history: List<HistoryEntry> = emptyList(),
+    /** Foods the user entered by hand or read from a label, sorted by name. */
+    val myFoods: List<Product> = emptyList(),
     /** Entries this app logged today, newest first. */
     val today: List<LoggedEntry> = emptyList(),
     val health: HealthStatus = HealthStatus.Checking,
@@ -63,7 +89,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val sink = HealthConnectSink(application)
     private val repository = ProductRepository(USER_AGENT)
-    private val recentStore = TextFileStore(application, "recent.json")
+    /** The list before Food history existed; only read once to carry it over. */
+    private val legacyRecentStore = TextFileStore(application, "recent.json")
+    private val historyStore = TextFileStore(application, "history.json")
+    private val myFoodsStore = TextFileStore(application, "myfoods.json")
     private val journalStore = TextFileStore(application, "journal.json")
     private var journal: List<LoggedEntry> = emptyList()
     private val updater = AppUpdater(application)
@@ -71,14 +100,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val labelReader = LabelReader(application)
     private val photoBarcodeReader = PhotoBarcodeReader(application)
 
+    /** Open Food Facts results by normalized query, so repeating a search sends no request. */
+    private val searchCache = object : LinkedHashMap<String, List<SearchHit>>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<SearchHit>>?) = size > SEARCH_CACHE_SIZE
+    }
+
+    /** When searches were sent ([SystemClock.elapsedRealtime]), to stay under the Open Food Facts limit. */
+    private var searchTimes: List<Long> = emptyList()
+
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
         viewModelScope.launch {
-            val recent = RecentProducts.decode(recentStore.read())
+            val now = System.currentTimeMillis()
+            var historyText = historyStore.read()
+            var myFoodsText = myFoodsStore.read()
+            if (historyText.isBlank() && myFoodsText.isBlank()) {
+                // First start with Food history: carry over the recent list, and keep the foods typed by hand in My foods.
+                val legacy = FoodHistory.decode(legacyRecentStore.read(), now)
+                historyText = FoodHistory.encode(legacy)
+                myFoodsText = MyFoods.encode(
+                    legacy.map { it.product }.filter { it.source == MANUAL_SOURCE }.fold(emptyList<Product>()) { list, p -> MyFoods.save(list, p) },
+                )
+                if (legacy.isNotEmpty()) {
+                    historyStore.write(historyText)
+                    myFoodsStore.write(myFoodsText)
+                }
+            }
+            val history = FoodHistory.decode(historyText, now)
+            val myFoods = MyFoods.decode(myFoodsText)
             journal = Journal.decode(journalStore.read())
-            _state.update { it.copy(recent = recent) }
+            _state.update { it.copy(history = history, myFoods = myFoods) }
             refresh()
         }
     }
@@ -160,8 +213,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             show("Unsupported barcode: $raw")
             return
         }
-        // Products logged before are re-used directly, which also works offline.
-        _state.value.recent.firstOrNull { it.barcode == barcode }?.let {
+        // The user's own entries and products logged before are re-used directly, which also works offline.
+        findKnown(barcode)?.let {
             navigate(Screen.Portion(it))
             return
         }
@@ -198,11 +251,98 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startManualEntry() = navigate(Screen.Manual(blankProduct(null)))
+    private fun findKnown(barcode: String): Product? =
+        _state.value.myFoods.firstOrNull { it.barcode == barcode }
+            ?: _state.value.history.firstOrNull { it.product.barcode == barcode }?.product
+
+    /** Packaged food without a usable barcode: the form with name, brand and "Scan nutrition label". */
+    fun startLabelEntry() = navigate(Screen.Manual(blankProduct(null)))
+
+    /** Generic food (fruit, bakery, home cooking): the form without brand or label. */
+    fun startGenericEntry() = navigate(Screen.Manual(blankProduct(null), generic = true))
 
     fun editProduct(product: Product) = navigate(Screen.Manual(product))
 
-    fun confirmManual(product: Product) = navigate(Screen.Portion(product))
+    /** Saves a food the user entered or corrected to My foods, then asks for the portion. */
+    fun confirmManual(product: Product) {
+        updateMyFoods(MyFoods.save(_state.value.myFoods, product))
+        // Keep the history's copy in step, so it shows the corrected values too.
+        updateHistory(FoodHistory.update(_state.value.history, product))
+        navigate(Screen.Portion(product))
+    }
+
+    fun openSearch() = navigate(Screen.Search())
+
+    fun setSearchQuery(query: String) = updateSearch { it.copy(query = query) }
+
+    /** Narrows the results to [store]; Open Food Facts results already fetched are filtered again, not re-fetched. */
+    fun setSearchStore(store: Store?) = updateSearch { it.copy(store = store) }
+
+    /**
+     * Searches Open Food Facts for the typed words. Only on request, since Open Food Facts allows about
+     * 10 searches a minute: repeated searches come from [searchCache], and past [SearchLimit] the user is
+     * asked to wait instead of risking a ban.
+     */
+    fun runSearch() {
+        val screen = _state.value.screen as? Screen.Search ?: return
+        val query = screen.query.trim()
+        if (query.isEmpty() || screen.searching) return
+        val key = FoodSearch.normalize(query)
+        searchCache[key]?.let { hits ->
+            updateSearch { it.copy(searchedQuery = query, hits = hits, error = null) }
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        val wait = SearchLimit.waitMillis(searchTimes, now)
+        if (wait > 0) {
+            val seconds = (wait + 999) / 1000
+            updateSearch {
+                it.copy(error = "Open Food Facts allows only a few searches a minute. Search again in $seconds s, or type more words to narrow the results below.")
+            }
+            return
+        }
+        searchTimes = SearchLimit.record(searchTimes, now)
+        updateSearch { it.copy(searching = true, error = null) }
+        viewModelScope.launch {
+            val result = repository.search(query, preferredLanguages())
+            result.onSuccess { hits -> searchCache[key] = hits }
+            updateSearch { current ->
+                result.fold(
+                    onSuccess = { hits -> current.copy(searching = false, searchedQuery = query, hits = hits) },
+                    onFailure = { e -> current.copy(searching = false, error = e.message ?: e.javaClass.simpleName) },
+                )
+            }
+        }
+    }
+
+    /** Opens a search result like a scanned product: the portion, or the form when it has no nutrition values. */
+    fun selectSearchHit(product: Product) {
+        val known = findKnown(product.barcode)
+        when {
+            known != null -> navigate(Screen.Portion(known))
+            product.per100g.isEmpty -> navigate(Screen.Manual(product, "No nutrition values on Open Food Facts yet."))
+            else -> navigate(Screen.Portion(product))
+        }
+    }
+
+    /** Nothing found: the label form, with the typed words as the name and the chosen store as the brand. */
+    fun readLabelFromSearch() {
+        val screen = _state.value.screen as? Screen.Search
+        navigate(Screen.Manual(blankProduct(null).copy(name = screen?.query?.trim().orEmpty(), brand = screen?.store?.label)))
+    }
+
+    private fun updateSearch(change: (Screen.Search) -> Screen.Search) = _state.update { state ->
+        val current = state.screen as? Screen.Search
+        if (current != null) state.copy(screen = change(current)) else state
+    }
+
+    fun openMyFoods() = navigate(Screen.MyFoods)
+
+    /** Deletes the user's own entry, and its line in the food history. */
+    fun deleteMyFood(product: Product) {
+        updateMyFoods(MyFoods.remove(_state.value.myFoods, product.barcode))
+        updateHistory(FoodHistory.remove(_state.value.history, product.barcode))
+    }
 
     /** Reads the nutrition label photo at [uri] and hands the values to the manual form that is open. */
     fun scanLabel(uri: Uri) {
@@ -233,9 +373,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (current != null && current.draft.barcode == screen.draft.barcode) state.copy(screen = change(current)) else state
     }
 
-    fun selectRecent(product: Product) = navigate(Screen.Portion(product))
+    fun selectFood(product: Product) = navigate(Screen.Portion(product))
 
-    fun removeRecent(product: Product) = updateRecent(_state.value.recent.filterNot { it.barcode == product.barcode })
+    fun removeFromHistory(product: Product) = updateHistory(FoodHistory.remove(_state.value.history, product.barcode))
 
     fun goHome() = navigate(Screen.Home)
 
@@ -253,7 +393,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val entry = LoggedEntry(recordId, product.name, grams, meal, product.per100g.forPortion(grams), time.toEpochMilli())
             saveJournal(Journal.add(journal, entry))
             showToday()
-            updateRecent(RecentProducts.push(_state.value.recent, product))
+            updateHistory(FoodHistory.record(_state.value.history, product, time.toEpochMilli()))
             _state.update { it.copy(screen = Screen.Home) }
             show("Logged ${formatGrams(grams)} g of ${product.name}", undoRecordId = recordId)
         }
@@ -282,9 +422,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun defaultMeal(): MealSlot = MealSlot.forHour(LocalTime.now().hour)
 
-    private fun updateRecent(list: List<Product>) {
-        _state.update { it.copy(recent = list) }
-        viewModelScope.launch { recentStore.write(RecentProducts.encode(list)) }
+    private fun updateHistory(list: List<HistoryEntry>) {
+        _state.update { it.copy(history = list) }
+        viewModelScope.launch { historyStore.write(FoodHistory.encode(list)) }
+    }
+
+    private fun updateMyFoods(list: List<Product>) {
+        _state.update { it.copy(myFoods = list) }
+        viewModelScope.launch { myFoodsStore.write(MyFoods.encode(list)) }
     }
 
     private fun navigate(screen: Screen) = _state.update { it.copy(screen = screen) }
@@ -301,6 +446,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val MANUAL_SOURCE = "Manual"
         private const val UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000L
+        private const val SEARCH_CACHE_SIZE = 20
         private const val USER_AGENT = "FoodLogger-Android/0.1 (https://github.com/RLi43/FoodLogger)"
 
         /** Device languages first, then the Swiss national languages and English as fallbacks. */

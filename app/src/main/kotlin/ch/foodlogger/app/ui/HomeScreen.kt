@@ -44,9 +44,12 @@ fun HomeScreen(
     state: UiState,
     onScan: () -> Unit,
     onScanPhoto: () -> Unit,
-    onManual: () -> Unit,
-    onRecent: (Product) -> Unit,
-    onRemoveRecent: (Product) -> Unit,
+    onSearch: () -> Unit,
+    onReadLabel: () -> Unit,
+    onGenericEntry: () -> Unit,
+    onMyFoods: () -> Unit,
+    onFood: (Product) -> Unit,
+    onRemoveFromHistory: (Product) -> Unit,
     onDeleteEntry: (LoggedEntry) -> Unit,
     onInstallUpdate: () -> Unit,
     onCheckForUpdate: () -> Unit,
@@ -76,6 +79,7 @@ fun HomeScreen(
         state.update?.let { release ->
             item { UpdateBanner(release, state.updating, onInstallUpdate) }
         }
+        item { SectionTitle("Packaged food") }
         item {
             Button(onClick = onScan, modifier = Modifier.fillMaxWidth().height(72.dp)) {
                 Text("Scan barcode", style = MaterialTheme.typography.titleLarge)
@@ -83,12 +87,22 @@ fun HomeScreen(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onScanPhoto, modifier = Modifier.weight(1f)) {
-                    Text("Barcode from photo")
-                }
-                OutlinedButton(onClick = onManual, modifier = Modifier.weight(1f)) {
-                    Text("Enter manually")
-                }
+                OutlinedButton(onClick = onSearch, modifier = Modifier.weight(1f)) { Text("Search") }
+                OutlinedButton(onClick = onScanPhoto, modifier = Modifier.weight(1f)) { Text("Barcode photo") }
+                OutlinedButton(onClick = onReadLabel, modifier = Modifier.weight(1f)) { Text("Read label") }
+            }
+        }
+        item { SectionTitle("Generic food") }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onGenericEntry, modifier = Modifier.weight(1f)) { Text("Enter by hand") }
+                // Search in a list of generic foods (fruit, bakery, cheese from the counter) is planned.
+                OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Search (coming later)") }
+            }
+        }
+        item {
+            TextButton(onClick = onMyFoods) {
+                Text(if (state.myFoods.isEmpty()) "My foods" else "My foods (${state.myFoods.size})")
             }
         }
         if (state.today.isNotEmpty()) {
@@ -107,23 +121,14 @@ fun HomeScreen(
                 }
             }
         }
-        if (state.recent.isNotEmpty()) {
-            item {
-                Text(
-                    "Recent",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
-            items(state.recent, key = { it.barcode }) { product ->
+        if (state.history.isNotEmpty()) {
+            item { SectionTitle("Food history") }
+            items(state.history.take(HISTORY_SHOWN).map { it.product }, key = { it.barcode }) { product ->
                 Column {
-                    ListItem(
-                        headlineContent = { Text(product.name) },
-                        supportingContent = {
-                            Text(listOfNotNull(product.brand, product.per100g.kcal?.let { "${it.toInt()} kcal / 100 g" }).joinToString(" · "))
-                        },
-                        trailingContent = { TextButton(onClick = { onRemoveRecent(product) }) { Text("Remove") } },
-                        modifier = Modifier.clickableRow { onRecent(product) },
+                    ProductRow(
+                        product = product,
+                        onClick = { onFood(product) },
+                        trailing = { TextButton(onClick = { onRemoveFromHistory(product) }) { Text("Remove") } },
                     )
                     HorizontalDivider()
                 }
@@ -147,6 +152,14 @@ fun HomeScreen(
         }
     }
 }
+
+@Composable
+fun SectionTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+}
+
+/** Most-used foods shown on the home screen; the rest are still found by search. */
+private const val HISTORY_SHOWN = 30
 
 @Composable
 private fun UpdateBanner(release: AppRelease, updating: Boolean, onInstall: () -> Unit) {

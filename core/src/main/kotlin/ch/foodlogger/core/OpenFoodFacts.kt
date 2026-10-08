@@ -1,11 +1,22 @@
 package ch.foodlogger.core
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-/** Builds requests for and parses responses from the Open Food Facts API v2. */
+import java.net.URLEncoder
+
+/**
+ * A product found by [OpenFoodFacts.parseSearch], with its pack size for display and all its brands and
+ * stores (the product itself keeps only the first brand) for narrowing results to one store.
+ */
+data class SearchHit(val product: Product, val quantity: String?, val brands: String?, val stores: String?) {
+    val hasNutrition: Boolean get() = !product.per100g.isEmpty
+}
+
+/** Builds requests for and parses responses from the Open Food Facts API v2 and its full-text search. */
 object OpenFoodFacts {
     const val SOURCE = "Open Food Facts"
 
@@ -14,9 +25,50 @@ object OpenFoodFacts {
      * (via the `fields` query parameter) to keep responses small.
      */
     fun productUrl(barcode: String, languages: List<String>): String {
-        val fields = listOf("code", "product_name", "generic_name", "brands", "serving_quantity", "serving_quantity_unit", "nutriments") +
+        return "https://world.openfoodfacts.org/api/v2/product/$barcode.json?fields=${fields(languages).joinToString(",")}"
+    }
+
+    private fun fields(languages: List<String>) =
+        listOf("code", "product_name", "generic_name", "brands", "serving_quantity", "serving_quantity_unit", "nutriments") +
             languages.map { "product_name_$it" }
-        return "https://world.openfoodfacts.org/api/v2/product/$barcode.json?fields=${fields.joinToString(",")}"
+
+    /** Products fetched per search; enough that filtering by store client-side still leaves a useful list. */
+    const val SEARCH_PAGE_SIZE = 100
+
+    /**
+     * URL of the full-text search for [query] among products sold in Switzerland, most scanned first.
+     * Open Food Facts allows far fewer searches than product lookups, so the app only searches when asked.
+     */
+    fun searchUrl(query: String, languages: List<String>): String {
+        val params = listOf(
+            "action" to "process",
+            "search_terms" to query.trim(),
+            "search_simple" to "1",
+            "tagtype_0" to "countries",
+            "tag_contains_0" to "contains",
+            "tag_0" to "switzerland",
+            "sort_by" to "unique_scans_n",
+            "page_size" to "$SEARCH_PAGE_SIZE",
+            "json" to "1",
+            "fields" to (fields(languages) + listOf("quantity", "stores")).joinToString(","),
+        )
+        return "https://world.openfoodfacts.org/cgi/search.pl?" +
+            params.joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
+    }
+
+    /**
+     * Parses the JSON body of [searchUrl], keeping the server's order (most scanned first) but moving
+     * products without nutrition values to the end. Products without a barcode are skipped.
+     */
+    fun parseSearch(json: String, languages: List<String>): List<SearchHit> {
+        val root = runCatching { parser.parseToJsonElement(json) }.getOrNull() as? JsonObject ?: return emptyList()
+        val products = root["products"] as? JsonArray ?: return emptyList()
+        val hits = products.mapNotNull { element ->
+            val product = element as? JsonObject ?: return@mapNotNull null
+            val code = product.text("code")?.takeIf { code -> code.all { it.isDigit() } } ?: return@mapNotNull null
+            SearchHit(productFrom(code, product, languages), product.text("quantity"), product.text("brands"), product.text("stores"))
+        }
+        return hits.distinctBy { it.product.barcode }.sortedBy { !it.hasNutrition }
     }
 
     /**
@@ -31,6 +83,10 @@ object OpenFoodFacts {
         val root = runCatching { parser.parseToJsonElement(json) }.getOrNull() as? JsonObject ?: return null
         if (root.number("status") == 0.0) return null
         val product = root["product"] as? JsonObject ?: return null
+        return productFrom(barcode, product, languages)
+    }
+
+    private fun productFrom(barcode: String, product: JsonObject, languages: List<String>): Product {
         val name = (languages.map { "product_name_$it" } + listOf("product_name", "generic_name"))
             .firstNotNullOfOrNull { product.text(it) } ?: "Product $barcode"
         val unit = product.text("serving_quantity_unit")?.lowercase()
