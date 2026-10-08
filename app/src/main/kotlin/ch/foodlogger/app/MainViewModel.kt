@@ -36,8 +36,11 @@ import java.util.UUID
 sealed interface Screen {
     data object Home : Screen
     data class Loading(val barcode: String) : Screen
-    /** How much of [product] to log; [pantryId] when it is taken from a pack kept in the pantry. */
-    data class Portion(val product: Product, val pantryId: String? = null) : Screen
+    /**
+     * How much of [product] to log; [pantryId] when it is taken from a pack kept in the pantry.
+     * With [editing], it changes that logged entry instead of adding one.
+     */
+    data class Portion(val product: Product, val pantryId: String? = null, val editing: LoggedEntry? = null) : Screen
 
     /**
      * Manual entry of per-100 g values, optionally pre-filled from [draft].
@@ -67,6 +70,9 @@ sealed interface Screen {
     ) : Screen
 
     data object MyFoods : Screen
+
+    /** Entries logged today, which can be edited or deleted. */
+    data object Today : Screen
 }
 
 /**
@@ -353,6 +359,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openMyFoods() = navigate(Screen.MyFoods)
 
+    fun openToday() = navigate(Screen.Today)
+
     /** Deletes the user's own entry, and its line in the food history. */
     fun deleteMyFood(product: Product) {
         updateMyFoods(MyFoods.remove(_state.value.myFoods, product.barcode))
@@ -390,6 +398,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectFood(product: Product) = navigate(Screen.Portion(product))
 
+    /**
+     * Opens the amount screen to change a logged entry's amount or meal. Uses the food's history or
+     * My foods copy when its name matches; otherwise rebuilds per-100 g values from the entry.
+     */
+    fun editEntry(entry: LoggedEntry) {
+        val known = (_state.value.history.map { it.product } + _state.value.myFoods).firstOrNull { it.name == entry.name }
+        val product = known ?: Product(
+            barcode = "journal-${entry.name}",
+            name = entry.name,
+            per100g = if (entry.grams > 0) entry.nutrients.scaled(100 / entry.grams) else entry.nutrients,
+            source = MANUAL_SOURCE,
+        )
+        navigate(Screen.Portion(product, editing = entry))
+    }
+
     fun removeFromHistory(product: Product) = updateHistory(FoodHistory.remove(_state.value.history, product.barcode))
 
     fun goHome() = navigate(Screen.Home)
@@ -399,8 +422,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * [keepGramsLeft] the rest of a newly opened pack is kept in the pantry.
      */
     fun log(product: Product, grams: Double, meal: MealSlot, keepGramsLeft: Double? = null, pantryId: String? = null) {
+        val editing = (_state.value.screen as? Screen.Portion)?.editing
         viewModelScope.launch {
-            val time = Instant.now()
+            // An edited entry keeps its original time; FoodSink can only add and delete, so it is replaced.
+            val time = editing?.let { Instant.ofEpochMilli(it.loggedAtMillis) } ?: Instant.now()
             val recordId = try {
                 sink.log(FoodEntry(product, grams, meal, time))
             } catch (e: Exception) {
@@ -411,6 +436,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val entry = LoggedEntry(recordId, product.name, grams, meal, product.per100g.forPortion(grams), time.toEpochMilli())
             saveJournal(Journal.add(journal, entry))
+            if (editing != null) {
+                // An edit changes only the entry: the history count and the pantry stay as they were.
+                try {
+                    sink.delete(editing.recordId)
+                    saveJournal(Journal.remove(journal, editing.recordId))
+                    show("Changed to ${formatGrams(grams)} g of ${product.name}")
+                } catch (e: Exception) {
+                    show("Saved the change, but could not remove the old entry: ${e.message ?: e.javaClass.simpleName}")
+                }
+                showToday()
+                _state.update { it.copy(screen = Screen.Today) }
+                return@launch
+            }
             showToday()
             updateHistory(FoodHistory.record(_state.value.history, product, time.toEpochMilli()))
             val pantryBefore = _state.value.pantry

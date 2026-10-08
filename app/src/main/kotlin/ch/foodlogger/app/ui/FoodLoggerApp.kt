@@ -51,7 +51,10 @@ fun FoodLoggerApp(
         if (result == SnackbarResult.ActionPerformed) viewModel.undo(message)
         viewModel.messageShown()
     }
-    BackHandler(enabled = state.screen != Screen.Home) { viewModel.goHome() }
+    BackHandler(enabled = state.screen != Screen.Home) {
+        // Leaving an entry's edit returns to the Today page it was opened from.
+        if ((state.screen as? Screen.Portion)?.editing != null) viewModel.openToday() else viewModel.goHome()
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(titleFor(state.screen)) }) },
@@ -72,7 +75,7 @@ fun FoodLoggerApp(
                 onPantryItem = viewModel::openPantryItem,
                 onEatOne = viewModel::eatOne,
                 onDeletePantryItem = viewModel::deletePantryItem,
-                onDeleteEntry = { viewModel.delete(it.recordId) },
+                onToday = viewModel::openToday,
                 onInstallUpdate = viewModel::installUpdate,
                 onCheckForUpdate = { viewModel.checkForUpdate(manual = true) },
                 onGrantPermission = onGrantPermission,
@@ -92,6 +95,7 @@ fun FoodLoggerApp(
                     product = pantryItem?.product ?: screen.product,
                     pantryItem = pantryItem,
                     defaultMeal = viewModel.defaultMeal(),
+                    editing = screen.editing,
                     canLog = state.health == HealthStatus.Ready,
                     onLog = { product, grams, meal, keepGramsLeft -> viewModel.log(product, grams, meal, keepGramsLeft, pantryItem?.id) },
                     onEdit = { viewModel.editProduct(screen.product) },
@@ -128,6 +132,12 @@ fun FoodLoggerApp(
                 onDelete = viewModel::deleteMyFood,
                 modifier = modifier,
             )
+            Screen.Today -> TodayScreen(
+                entries = state.today,
+                onEdit = viewModel::editEntry,
+                onDelete = { viewModel.delete(it.recordId) },
+                modifier = modifier,
+            )
         }
     }
 }
@@ -138,4 +148,5 @@ private fun titleFor(screen: Screen) = when (screen) {
     is Screen.Manual -> if (screen.generic) "Generic food" else "Nutrition per 100 g"
     is Screen.Search -> "Search packaged food"
     Screen.MyFoods -> "My foods"
+    Screen.Today -> "Today"
 }

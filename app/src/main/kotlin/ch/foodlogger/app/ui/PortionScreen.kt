@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ch.foodlogger.app.formatGrams
+import ch.foodlogger.core.LoggedEntry
 import ch.foodlogger.core.MealSlot
 import ch.foodlogger.core.Nutrients
 import ch.foodlogger.core.Pantry
@@ -46,17 +47,18 @@ fun PortionScreen(
     product: Product,
     pantryItem: PantryItem?,
     defaultMeal: MealSlot,
+    editing: LoggedEntry? = null,
     canLog: Boolean,
     onLog: (Product, Double, MealSlot, Double?) -> Unit,
     onEdit: () -> Unit,
     onNewPack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val key = product.barcode + (pantryItem?.id ?: "")
-    val initialGrams = pantryItem?.oneServingGrams ?: product.servingGrams ?: 100.0
+    val key = product.barcode + (pantryItem?.id ?: "") + (editing?.recordId ?: "")
+    val initialGrams = editing?.grams ?: pantryItem?.oneServingGrams ?: product.servingGrams ?: 100.0
     var gramsText by rememberSaveable(key) { mutableStateOf(formatNumber(initialGrams)) }
-    var meal by rememberSaveable(key) { mutableStateOf(defaultMeal) }
-    var keep by rememberSaveable(key) { mutableStateOf(pantryItem == null && Pantry.keepByDefault(product, initialGrams)) }
+    var meal by rememberSaveable(key) { mutableStateOf(editing?.meal ?: defaultMeal) }
+    var keep by rememberSaveable(key) { mutableStateOf(pantryItem == null && editing == null && Pantry.keepByDefault(product, initialGrams)) }
     var leftText by rememberSaveable(key) { mutableStateOf("") }
     val grams = parseNumber(gramsText)?.takeIf { it > 0 }
     val pack = product.packageGrams
@@ -117,7 +119,8 @@ fun PortionScreen(
             }
         }
 
-        if (pantryItem == null) {
+        // Changing a logged entry leaves the pantry alone.
+        if (pantryItem == null && editing == null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Keep the rest in the pantry")
@@ -168,7 +171,7 @@ fun PortionScreen(
             // With "keep the rest" on, logging waits for an amount to keep, unless the pack is used up.
             enabled = canLog && grams != null && !(keepIncomplete && pack == null),
             modifier = Modifier.fillMaxWidth().height(56.dp),
-        ) { Text("Log to Health Connect") }
+        ) { Text(if (editing != null) "Save change" else "Log to Health Connect") }
         if (!canLog) {
             Text(
                 "Health Connect access is missing; go back to allow it.",
@@ -176,7 +179,8 @@ fun PortionScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        TextButton(onClick = onEdit) { Text("Edit nutrition values") }
+        // Editing the values would leave this screen and lose which entry is being changed.
+        if (editing == null) TextButton(onClick = onEdit) { Text("Edit nutrition values") }
     }
 }
 
