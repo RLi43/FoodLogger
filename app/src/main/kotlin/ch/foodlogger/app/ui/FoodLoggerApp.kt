@@ -69,6 +69,7 @@ fun FoodLoggerApp(
                 onMyFoods = viewModel::openMyFoods,
                 onFood = viewModel::selectFood,
                 onRemoveFromHistory = viewModel::removeFromHistory,
+                onLogAgain = viewModel::logAgain,
                 onDeleteEntry = { viewModel.delete(it.recordId) },
                 onInstallUpdate = viewModel::installUpdate,
                 onCheckForUpdate = { viewModel.checkForUpdate(manual = true) },
@@ -85,6 +86,7 @@ fun FoodLoggerApp(
             is Screen.Portion -> PortionScreen(
                 product = screen.product,
                 defaultMeal = viewModel.defaultMeal(),
+                initialGrams = screen.grams,
                 canLog = state.health == HealthStatus.Ready,
                 onLog = viewModel::log,
                 onEdit = { viewModel.editProduct(screen.product) },

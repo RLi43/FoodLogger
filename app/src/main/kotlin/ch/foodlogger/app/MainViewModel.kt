@@ -34,7 +34,8 @@ import java.util.UUID
 sealed interface Screen {
     data object Home : Screen
     data class Loading(val barcode: String) : Screen
-    data class Portion(val product: Product) : Screen
+    /** Amount screen for [product]; [grams] pre-fills the amount, e.g. when logging an entry again. */
+    data class Portion(val product: Product, val grams: Double? = null) : Screen
 
     /**
      * Manual entry of per-100 g values, optionally pre-filled from [draft].
@@ -374,6 +375,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectFood(product: Product) = navigate(Screen.Portion(product))
+
+    /**
+     * Opens the amount screen for a food logged earlier, with the same amount. Uses the food's
+     * history or My foods copy when its name matches; otherwise rebuilds per-100 g values from the entry.
+     */
+    fun logAgain(entry: LoggedEntry) {
+        val known = (_state.value.history.map { it.product } + _state.value.myFoods).firstOrNull { it.name == entry.name }
+        val product = known ?: Product(
+            barcode = "journal-${entry.name}",
+            name = entry.name,
+            per100g = if (entry.grams > 0) entry.nutrients.scaled(100 / entry.grams) else entry.nutrients,
+            source = MANUAL_SOURCE,
+        )
+        navigate(Screen.Portion(product, entry.grams))
+    }
 
     fun removeFromHistory(product: Product) = updateHistory(FoodHistory.remove(_state.value.history, product.barcode))
 

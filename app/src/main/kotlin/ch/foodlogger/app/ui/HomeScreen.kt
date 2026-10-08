@@ -50,6 +50,7 @@ fun HomeScreen(
     onMyFoods: () -> Unit,
     onFood: (Product) -> Unit,
     onRemoveFromHistory: (Product) -> Unit,
+    onLogAgain: (LoggedEntry) -> Unit,
     onDeleteEntry: (LoggedEntry) -> Unit,
     onInstallUpdate: () -> Unit,
     onCheckForUpdate: () -> Unit,
@@ -115,7 +116,13 @@ fun HomeScreen(
                         supportingContent = {
                             Text(listOfNotNull("${formatGrams(entry.grams)} g", entry.nutrients.kcal?.let { "${it.roundToInt()} kcal" }).joinToString(" · "))
                         },
-                        trailingContent = { TextButton(onClick = { pendingDelete = entry }) { Text("Delete") } },
+                        trailingContent = {
+                            Row {
+                                TextButton(onClick = { onLogAgain(entry) }) { Text("Again") }
+                                TextButton(onClick = { pendingDelete = entry }) { Text("Delete") }
+                            }
+                        },
+                        modifier = Modifier.clickableRow { onLogAgain(entry) },
                     )
                     HorizontalDivider()
                 }

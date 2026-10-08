@@ -36,12 +36,13 @@ import ch.foodlogger.core.Product
 fun PortionScreen(
     product: Product,
     defaultMeal: MealSlot,
+    initialGrams: Double? = null,
     canLog: Boolean,
     onLog: (Product, Double, MealSlot) -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var gramsText by rememberSaveable(product.barcode) { mutableStateOf(formatNumber(product.servingGrams ?: 100.0)) }
+    var gramsText by rememberSaveable(product.barcode) { mutableStateOf(formatNumber(initialGrams ?: product.servingGrams ?: 100.0)) }
     var meal by rememberSaveable(product.barcode) { mutableStateOf(defaultMeal) }
     val grams = parseNumber(gramsText)?.takeIf { it > 0 }
 
