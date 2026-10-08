@@ -51,7 +51,9 @@ fun SearchScreen(
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val local = remember(ownFoods, screen.query, screen.store) { FoodSearch.local(ownFoods, screen.query, screen.store) }
-    val remote = remember(screen.hits, screen.store) { screen.hits?.let { FoodSearch.remote(it, screen.store) } }
+    val remote = remember(screen.hits, screen.store, screen.query, screen.searchedQuery) {
+        screen.hits?.let { FoodSearch.remote(it, screen.store, screen.query, screen.searchedQuery.orEmpty()) }
+    }
     val submit = {
         keyboard?.hide()
         onSearch()
@@ -96,17 +98,22 @@ fun SearchScreen(
         }
 
         item { SectionTitle("Open Food Facts") }
+        // An error (e.g. too many searches) is shown above the results fetched before, which stay usable.
+        screen.error?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
         when {
             screen.searching -> item {
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             }
-            screen.error != null -> item { Text(screen.error, color = MaterialTheme.colorScheme.error) }
-            remote == null -> item {
-                Text("Press Search to look for products sold in Switzerland.", style = MaterialTheme.typography.bodySmall)
+            remote == null -> if (screen.error == null) item {
+                Text(
+                    "Press Search to look for products sold in Switzerland. Open Food Facts allows only a few searches a minute, " +
+                        "so type a few words first; more words then narrow the results without a new search.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             remote.isEmpty() -> item {
                 val where = screen.store?.let { " at ${it.label}" }.orEmpty()
-                Text("No products found for \"${screen.searchedQuery}\"$where.", style = MaterialTheme.typography.bodySmall)
+                Text("No products found for \"${screen.query.trim()}\"$where.", style = MaterialTheme.typography.bodySmall)
             }
             else -> items(remote, key = { "off-${it.product.barcode}" }) { hit ->
                 Column {

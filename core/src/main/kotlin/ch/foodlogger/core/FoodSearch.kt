@@ -41,7 +41,16 @@ object FoodSearch {
         if (words(query).isEmpty()) emptyList()
         else products.distinctBy { it.barcode }.filter { matches(query, it.name, it.brand) && soldAt(store, it.brand) }
 
-    /** Open Food Facts results sold at [store] (any store when null), at most [limit]. */
-    fun remote(hits: List<SearchHit>, store: Store?, limit: Int = 30): List<SearchHit> =
-        hits.filter { soldAt(store, it.brands, it.stores) }.take(limit)
+    /**
+     * Open Food Facts results sold at [store] (any store when null), at most [limit].
+     * Words typed after the search ran ([query] beyond [searchedQuery]) narrow the results already
+     * fetched, by name and brand, so refining a search costs no new request.
+     */
+    fun remote(hits: List<SearchHit>, store: Store?, query: String = "", searchedQuery: String = "", limit: Int = 30): List<SearchHit> {
+        val searched = words(searchedQuery)
+        val extra = words(query).filter { word -> searched.none { word.startsWith(it) || word in it } }
+        return hits.filter { hit ->
+            soldAt(store, hit.brands, hit.stores) && extra.all { matches(it, hit.product.name, hit.brands) }
+        }.take(limit)
+    }
 }

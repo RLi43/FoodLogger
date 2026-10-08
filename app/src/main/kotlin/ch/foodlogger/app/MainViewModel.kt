@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import ch.foodlogger.core.AppRelease
 import ch.foodlogger.core.Barcodes
 import ch.foodlogger.core.FoodHistory
+import ch.foodlogger.core.FoodSearch
 import ch.foodlogger.core.HistoryEntry
 import ch.foodlogger.core.LabelScan
 import ch.foodlogger.core.Journal
@@ -17,6 +18,7 @@ import ch.foodlogger.core.MealSlot
 import ch.foodlogger.core.MyFoods
 import ch.foodlogger.core.Product
 import ch.foodlogger.core.SearchHit
+import ch.foodlogger.core.SearchLimit
 import ch.foodlogger.core.Store
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -97,6 +99,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastUpdateCheck: Long? = null
     val labelReader = LabelReader(application)
     private val photoBarcodeReader = PhotoBarcodeReader(application)
+
+    /** Open Food Facts results by normalized query, so repeating a search sends no request. */
+    private val searchCache = object : LinkedHashMap<String, List<SearchHit>>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<SearchHit>>?) = size > SEARCH_CACHE_SIZE
+    }
+
+    /** When searches were sent ([SystemClock.elapsedRealtime]), to stay under the Open Food Facts limit. */
+    private var searchTimes: List<Long> = emptyList()
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -268,14 +278,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Narrows the results to [store]; Open Food Facts results already fetched are filtered again, not re-fetched. */
     fun setSearchStore(store: Store?) = updateSearch { it.copy(store = store) }
 
-    /** Searches Open Food Facts for the typed words. Only on request: its search limit is far lower than for lookups. */
+    /**
+     * Searches Open Food Facts for the typed words. Only on request, since Open Food Facts allows about
+     * 10 searches a minute: repeated searches come from [searchCache], and past [SearchLimit] the user is
+     * asked to wait instead of risking a ban.
+     */
     fun runSearch() {
         val screen = _state.value.screen as? Screen.Search ?: return
         val query = screen.query.trim()
         if (query.isEmpty() || screen.searching) return
+        val key = FoodSearch.normalize(query)
+        searchCache[key]?.let { hits ->
+            updateSearch { it.copy(searchedQuery = query, hits = hits, error = null) }
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        val wait = SearchLimit.waitMillis(searchTimes, now)
+        if (wait > 0) {
+            val seconds = (wait + 999) / 1000
+            updateSearch {
+                it.copy(error = "Open Food Facts allows only a few searches a minute. Search again in $seconds s, or type more words to narrow the results below.")
+            }
+            return
+        }
+        searchTimes = SearchLimit.record(searchTimes, now)
         updateSearch { it.copy(searching = true, error = null) }
         viewModelScope.launch {
             val result = repository.search(query, preferredLanguages())
+            result.onSuccess { hits -> searchCache[key] = hits }
             updateSearch { current ->
                 result.fold(
                     onSuccess = { hits -> current.copy(searching = false, searchedQuery = query, hits = hits) },
@@ -416,6 +446,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val MANUAL_SOURCE = "Manual"
         private const val UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000L
+        private const val SEARCH_CACHE_SIZE = 20
         private const val USER_AGENT = "FoodLogger-Android/0.1 (https://github.com/RLi43/FoodLogger)"
 
         /** Device languages first, then the Swiss national languages and English as fallbacks. */

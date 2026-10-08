@@ -127,4 +127,31 @@ class FoodSearchTest {
         assertEquals(listOf("1", "2"), FoodSearch.remote(hits, Store.MIGROS).map { it.product.barcode })
         assertEquals(listOf("1", "2"), FoodSearch.remote(hits, null, limit = 2).map { it.product.barcode })
     }
+
+    @Test
+    fun remoteSearchNarrowsByWordsTypedAfterSearching() {
+        fun hit(i: Int, name: String) = SearchHit(product(i, name), null, "Emmi", null)
+        val hits = listOf(hit(1, "Joghurt Erdbeer"), hit(2, "Joghurt Nature"), hit(3, "Yogourt fraise"))
+        assertEquals(listOf("1", "2", "3"), FoodSearch.remote(hits, null, "joghurt", "joghurt").map { it.product.barcode })
+        assertEquals(listOf("1"), FoodSearch.remote(hits, null, "joghurt erdb", "joghurt").map { it.product.barcode })
+        // A word that only grew is not an extra word: "jog" searched, "joghurt" typed.
+        assertEquals(3, FoodSearch.remote(hits, null, "joghurt", "jog").size)
+        assertEquals(listOf("1"), FoodSearch.remote(hits, null, "emmi erdbeer", "").map { it.product.barcode })
+    }
+}
+
+class SearchLimitTest {
+    @Test
+    fun allowsUpToMaxPerWindow() {
+        val now = 1_000_000L
+        var sent = emptyList<Long>()
+        repeat(SearchLimit.MAX_SEARCHES) { i ->
+            assertEquals(0, SearchLimit.waitMillis(sent, now + i * 1000L))
+            sent = SearchLimit.record(sent, now + i * 1000L)
+        }
+        val next = now + SearchLimit.MAX_SEARCHES * 1000L
+        assertEquals(now + SearchLimit.WINDOW_MS - next, SearchLimit.waitMillis(sent, next))
+        assertEquals(0, SearchLimit.waitMillis(sent, now + SearchLimit.WINDOW_MS))
+        assertEquals(SearchLimit.MAX_SEARCHES, SearchLimit.record(sent, now + SearchLimit.WINDOW_MS).size)
+    }
 }

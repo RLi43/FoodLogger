@@ -23,7 +23,9 @@ The home screen splits adding food by kind:
 **Search** is for packaged food without a usable barcode (missing, damaged, or one piece from a multipack).
 Optionally pick a store first (Migros, Coop, Denner, Aldi, Lidl), which keeps the list short. Your own foods
 match while you type; *Search* then asks Open Food Facts for products sold in Switzerland, most scanned first
-(only on request, since Open Food Facts allows few searches per minute). A store is matched against the
+(only on request, since Open Food Facts allows about 10 searches a minute and bans clients that go over it).
+Repeated searches are answered from memory, words typed after a search narrow its results without a new
+request, and past 8 searches a minute the app asks you to wait. A store is matched against the
 product's brands and stores, including store brands such as M-Budget or Naturaplan. Results without
 nutrition values are listed last; if nothing fits, *Read the nutrition label* opens the form below.
 
