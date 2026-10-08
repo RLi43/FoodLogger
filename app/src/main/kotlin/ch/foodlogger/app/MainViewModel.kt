@@ -65,6 +65,9 @@ sealed interface Screen {
     ) : Screen
 
     data object MyFoods : Screen
+
+    /** Entries logged today, which can be edited or deleted. */
+    data object Today : Screen
 }
 
 /** A snackbar message; [undoRecordId] adds an "Undo" action that deletes that record. */
@@ -339,6 +342,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openMyFoods() = navigate(Screen.MyFoods)
 
+    fun openToday() = navigate(Screen.Today)
+
     /** Deletes the user's own entry, and its line in the food history. */
     fun deleteMyFood(product: Product) {
         updateMyFoods(MyFoods.remove(_state.value.myFoods, product.barcode))
@@ -419,7 +424,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     show("Saved the change, but could not remove the old entry: ${e.message ?: e.javaClass.simpleName}")
                 }
                 showToday()
-                _state.update { it.copy(screen = Screen.Home) }
+                _state.update { it.copy(screen = Screen.Today) }
                 return@launch
             }
             showToday()

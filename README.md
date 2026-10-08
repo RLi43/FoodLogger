@@ -42,8 +42,9 @@ values with on-device text recognition (ML Kit via Play services, nothing is upl
 French, Italian and English labels, including the multilingual Swiss ones, takes the per-100 g column and
 converts kJ to kcal when only kJ is readable. Check the values before continuing: OCR can misread digits.
 
-The home screen lists **today's entries logged with FoodLogger** (with a small total) and lets you delete
-them; right after logging, the snackbar offers **Undo**. The app only knows its own entries: it keeps the
+The home screen shows a one-line total for today; tap it to open **Today**, the entries logged with
+FoodLogger today. Tap an entry to change its amount or meal (it keeps its time), or delete it; right after
+logging, the snackbar offers **Undo**. To log a food again, pick it from **Food history**. The app only knows its own entries: it keeps the
 record IDs Health Connect returns, so no read permission is needed. Google Health remains the place to see
 your full day.
 
