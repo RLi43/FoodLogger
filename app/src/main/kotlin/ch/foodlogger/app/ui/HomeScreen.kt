@@ -50,7 +50,7 @@ fun HomeScreen(
     onMyFoods: () -> Unit,
     onFood: (Product) -> Unit,
     onRemoveFromHistory: (Product) -> Unit,
-    onLogAgain: (LoggedEntry) -> Unit,
+    onEditEntry: (LoggedEntry) -> Unit,
     onDeleteEntry: (LoggedEntry) -> Unit,
     onInstallUpdate: () -> Unit,
     onCheckForUpdate: () -> Unit,
@@ -118,11 +118,11 @@ fun HomeScreen(
                         },
                         trailingContent = {
                             Row {
-                                TextButton(onClick = { onLogAgain(entry) }) { Text("Again") }
+                                TextButton(onClick = { onEditEntry(entry) }) { Text("Edit") }
                                 TextButton(onClick = { pendingDelete = entry }) { Text("Delete") }
                             }
                         },
-                        modifier = Modifier.clickableRow { onLogAgain(entry) },
+                        modifier = Modifier.clickableRow { onEditEntry(entry) },
                     )
                     HorizontalDivider()
                 }

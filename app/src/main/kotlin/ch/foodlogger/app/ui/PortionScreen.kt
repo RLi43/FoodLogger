@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ch.foodlogger.app.formatGrams
+import ch.foodlogger.core.LoggedEntry
 import ch.foodlogger.core.MealSlot
 import ch.foodlogger.core.Nutrients
 import ch.foodlogger.core.Product
@@ -36,14 +37,14 @@ import ch.foodlogger.core.Product
 fun PortionScreen(
     product: Product,
     defaultMeal: MealSlot,
-    initialGrams: Double? = null,
+    editing: LoggedEntry? = null,
     canLog: Boolean,
     onLog: (Product, Double, MealSlot) -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var gramsText by rememberSaveable(product.barcode) { mutableStateOf(formatNumber(initialGrams ?: product.servingGrams ?: 100.0)) }
-    var meal by rememberSaveable(product.barcode) { mutableStateOf(defaultMeal) }
+    var gramsText by rememberSaveable(product.barcode) { mutableStateOf(formatNumber(editing?.grams ?: product.servingGrams ?: 100.0)) }
+    var meal by rememberSaveable(product.barcode) { mutableStateOf(editing?.meal ?: defaultMeal) }
     val grams = parseNumber(gramsText)?.takeIf { it > 0 }
 
     Column(
@@ -95,7 +96,7 @@ fun PortionScreen(
             onClick = { grams?.let { onLog(product, it, meal) } },
             enabled = canLog && grams != null,
             modifier = Modifier.fillMaxWidth().height(56.dp),
-        ) { Text("Log to Health Connect") }
+        ) { Text(if (editing != null) "Save change" else "Log to Health Connect") }
         if (!canLog) {
             Text(
                 "Health Connect access is missing; go back to allow it.",
@@ -103,7 +104,8 @@ fun PortionScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        TextButton(onClick = onEdit) { Text("Edit nutrition values") }
+        // Editing the values would leave this screen and lose which entry is being changed.
+        if (editing == null) TextButton(onClick = onEdit) { Text("Edit nutrition values") }
     }
 }
 
