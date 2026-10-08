@@ -52,6 +52,8 @@ data class Product(
     val per100g: Nutrients = Nutrients(),
     /** Grams (or ml, treated as grams) in one serving, when the product declares it. */
     val servingGrams: Double? = null,
+    /** Grams (or ml) in the whole pack, when known, e.g. 200 for a pack of 8 cookies of 25 g. */
+    val packageGrams: Double? = null,
     /** Where the data came from, e.g. "Open Food Facts" or "Manual". */
     val source: String,
 )

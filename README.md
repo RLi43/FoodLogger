@@ -36,6 +36,14 @@ Two lists keep foods at hand:
 - **Food history**: the foods you log most, from any source, ordered by how often and how recently you logged
   them. It replaced the old 30-item recent list (which is carried over on the first start).
 
+The **Pantry** keeps the rest of a pack you opened, for when the barcode is only on the outer package. After
+choosing a portion, *Keep the rest in the pantry* (on by default for packs of two or more servings) saves what
+is left; the pack size comes from Open Food Facts or the form, and when it is unknown you type how much is
+left. The pantry is listed on the home screen with servings left and when the pack was opened: **Eat 1** logs
+one serving for the current meal, tapping the pack logs another amount, and *Delete* removes it. A pack leaves
+the pantry when it is finished, and scanning it again opens the kept pack (with *New pack* for a fresh one).
+Deleting a logged entry later does not put it back into the pack; only *Undo* right after logging does.
+
 If a product is missing or has no nutrition values, a per-100 g form opens (pre-filled with what is known).
 There, **Scan nutrition label** takes a photo of the table (or *From gallery* picks one) and fills in the
 values with on-device text recognition (ML Kit via Play services, nothing is uploaded). The parser reads German,
@@ -73,7 +81,7 @@ Requires Android 8.0+, Google Play services, and Health Connect (built in from A
 
 | Path | What |
 | --- | --- |
-| `core/` | Plain Kotlin/JVM build: Open Food Facts parsing, nutrition label parsing, nutrient maths, barcode validation, food search, Food history and My foods, journal of logged entries. Tested with `./gradlew -p core test`, no Android SDK needed. |
+| `core/` | Plain Kotlin/JVM build: Open Food Facts parsing, nutrition label parsing, nutrient maths, barcode validation, food search, Food history, My foods and the pantry, journal of logged entries. Tested with `./gradlew -p core test`, no Android SDK needed. |
 | `app/` | Android app (Jetpack Compose). `HealthConnectSink` writes the records; `FoodSink` is the seam for another destination (e.g. the Google Health cloud API). |
 
 ## Roadmap

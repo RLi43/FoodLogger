@@ -48,7 +48,7 @@ fun FoodLoggerApp(
             actionLabel = if (message.undoRecordId != null) "Undo" else null,
             duration = SnackbarDuration.Short,
         )
-        if (result == SnackbarResult.ActionPerformed) message.undoRecordId?.let(viewModel::delete)
+        if (result == SnackbarResult.ActionPerformed) viewModel.undo(message)
         viewModel.messageShown()
     }
     BackHandler(enabled = state.screen != Screen.Home) { viewModel.goHome() }
@@ -69,6 +69,9 @@ fun FoodLoggerApp(
                 onMyFoods = viewModel::openMyFoods,
                 onFood = viewModel::selectFood,
                 onRemoveFromHistory = viewModel::removeFromHistory,
+                onPantryItem = viewModel::openPantryItem,
+                onEatOne = viewModel::eatOne,
+                onDeletePantryItem = viewModel::deletePantryItem,
                 onDeleteEntry = { viewModel.delete(it.recordId) },
                 onInstallUpdate = viewModel::installUpdate,
                 onCheckForUpdate = { viewModel.checkForUpdate(manual = true) },
@@ -82,14 +85,20 @@ fun FoodLoggerApp(
                     Text("Looking up ${screen.barcode}…")
                 }
             }
-            is Screen.Portion -> PortionScreen(
-                product = screen.product,
-                defaultMeal = viewModel.defaultMeal(),
-                canLog = state.health == HealthStatus.Ready,
-                onLog = viewModel::log,
-                onEdit = { viewModel.editProduct(screen.product) },
-                modifier = modifier,
-            )
+            is Screen.Portion -> {
+                // The pack may have been finished or deleted meanwhile; then this is a plain portion.
+                val pantryItem = state.pantry.firstOrNull { it.id == screen.pantryId }
+                PortionScreen(
+                    product = pantryItem?.product ?: screen.product,
+                    pantryItem = pantryItem,
+                    defaultMeal = viewModel.defaultMeal(),
+                    canLog = state.health == HealthStatus.Ready,
+                    onLog = { product, grams, meal, keepGramsLeft -> viewModel.log(product, grams, meal, keepGramsLeft, pantryItem?.id) },
+                    onEdit = { viewModel.editProduct(screen.product) },
+                    onNewPack = { viewModel.newPack(screen.product) },
+                    modifier = modifier,
+                )
+            }
             is Screen.Manual -> ManualEntryScreen(
                 draft = screen.draft,
                 hint = screen.hint,
