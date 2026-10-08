@@ -29,7 +29,7 @@ object OpenFoodFacts {
     }
 
     private fun fields(languages: List<String>) =
-        listOf("code", "product_name", "generic_name", "brands", "serving_quantity", "serving_quantity_unit", "nutriments") +
+        listOf("code", "product_name", "generic_name", "brands", "serving_quantity", "serving_quantity_unit", "product_quantity", "product_quantity_unit", "nutriments") +
             languages.map { "product_name_$it" }
 
     /** Products fetched per search; enough that filtering by store client-side still leaves a useful list. */
@@ -90,6 +90,7 @@ object OpenFoodFacts {
         val name = (languages.map { "product_name_$it" } + listOf("product_name", "generic_name"))
             .firstNotNullOfOrNull { product.text(it) } ?: "Product $barcode"
         val unit = product.text("serving_quantity_unit")?.lowercase()
+        val packageUnit = product.text("product_quantity_unit")?.lowercase()
         val nutriments = product["nutriments"] as? JsonObject ?: JsonObject(emptyMap())
         return Product(
             barcode = barcode,
@@ -108,6 +109,8 @@ object OpenFoodFacts {
             ),
             servingGrams = product.number("serving_quantity")
                 ?.takeIf { it > 0 && (unit == null || unit == "g" || unit == "ml") },
+            packageGrams = product.number("product_quantity")
+                ?.takeIf { it > 0 && (packageUnit == null || packageUnit == "g" || packageUnit == "ml") },
             source = SOURCE,
         )
     }

@@ -91,6 +91,19 @@ class OpenFoodFactsTest {
     }
 
     @Test
+    fun packageRules() {
+        fun pack(extra: String) =
+            OpenFoodFacts.parse("1", """{"status":1,"product":{$extra}}""", langs)!!.packageGrams
+        assertEquals(200.0, pack(""""product_quantity":"200","product_quantity_unit":"g""""))
+        assertEquals(500.0, pack(""""product_quantity":500,"product_quantity_unit":"ML""""))
+        assertEquals(250.0, pack(""""product_quantity":250"""))
+        assertNull(pack(""""product_quantity":2,"product_quantity_unit":"kg""""))
+        assertNull(pack(""""product_quantity":0"""))
+        assertNull(pack(""))
+        assertTrue(OpenFoodFacts.productUrl("1", langs).contains("product_quantity"))
+    }
+
+    @Test
     fun missingProduct() {
         assertNull(OpenFoodFacts.parse("1", """{"code":"1","status":0,"status_verbose":"product not found"}""", langs))
         assertNull(OpenFoodFacts.parse("1", """{"status":1}""", langs))

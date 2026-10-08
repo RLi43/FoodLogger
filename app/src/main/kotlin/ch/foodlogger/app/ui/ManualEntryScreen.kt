@@ -52,6 +52,7 @@ fun ManualEntryScreen(
     val name = rememberSaveable(key) { mutableStateOf(draft.name) }
     val brand = rememberSaveable(key) { mutableStateOf(draft.brand.orEmpty()) }
     val serving = rememberSaveable(key) { mutableStateOf(formatNumber(draft.servingGrams)) }
+    val pack = rememberSaveable(key) { mutableStateOf(formatNumber(draft.packageGrams)) }
     val n = draft.per100g
     val kcal = rememberSaveable(key) { mutableStateOf(formatNumber(n.kcal)) }
     val fat = rememberSaveable(key) { mutableStateOf(formatNumber(n.fat)) }
@@ -94,6 +95,7 @@ fun ManualEntryScreen(
         TextInput(name, "Name *")
         if (!generic) TextInput(brand, "Brand")
         NumberInput(serving, if (generic) "Typical portion (g), optional" else "Serving size (g), optional")
+        if (!generic) NumberInput(pack, "Pack size (g), optional")
         if (generic) {
             Text("Per 100 g", style = MaterialTheme.typography.titleSmall)
         } else {
@@ -124,6 +126,7 @@ fun ManualEntryScreen(
                         name = name.value.trim(),
                         brand = brand.value.trim().ifEmpty { null },
                         servingGrams = parseNumber(serving.value)?.takeIf { it > 0 },
+                        packageGrams = if (generic) draft.packageGrams else parseNumber(pack.value)?.takeIf { it > 0 },
                         per100g = Nutrients(
                             kcal = parseNumber(kcal.value),
                             fat = parseNumber(fat.value),
