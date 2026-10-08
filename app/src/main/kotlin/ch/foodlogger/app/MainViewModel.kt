@@ -398,7 +398,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun log(product: Product, grams: Double, meal: MealSlot) {
         val editing = (_state.value.screen as? Screen.Portion)?.editing
         viewModelScope.launch {
-            // An edited entry keeps its original time; Health Connect has no update, so it is replaced.
+            // An edited entry keeps its original time; FoodSink can only add and delete, so it is replaced.
             val time = editing?.let { Instant.ofEpochMilli(it.loggedAtMillis) } ?: Instant.now()
             val recordId = try {
                 sink.log(FoodEntry(product, grams, meal, time))
