@@ -16,6 +16,8 @@ import ch.foodlogger.core.Journal
 import ch.foodlogger.core.LoggedEntry
 import ch.foodlogger.core.MealSlot
 import ch.foodlogger.core.MyFoods
+import ch.foodlogger.core.Pantry
+import ch.foodlogger.core.PantryItem
 import ch.foodlogger.core.Product
 import ch.foodlogger.core.SearchHit
 import ch.foodlogger.core.SearchLimit
@@ -34,8 +36,11 @@ import java.util.UUID
 sealed interface Screen {
     data object Home : Screen
     data class Loading(val barcode: String) : Screen
-    /** Amount screen for [product]; with [editing], it changes that logged entry instead of adding one. */
-    data class Portion(val product: Product, val editing: LoggedEntry? = null) : Screen
+    /**
+     * How much of [product] to log; [pantryId] when it is taken from a pack kept in the pantry.
+     * With [editing], it changes that logged entry instead of adding one.
+     */
+    data class Portion(val product: Product, val pantryId: String? = null, val editing: LoggedEntry? = null) : Screen
 
     /**
      * Manual entry of per-100 g values, optionally pre-filled from [draft].
@@ -70,8 +75,11 @@ sealed interface Screen {
     data object Today : Screen
 }
 
-/** A snackbar message; [undoRecordId] adds an "Undo" action that deletes that record. */
-data class Message(val text: String, val undoRecordId: String? = null)
+/**
+ * A snackbar message; [undoRecordId] adds an "Undo" action that deletes that record and, when the log
+ * changed the pantry, restores it to [pantryBefore].
+ */
+data class Message(val text: String, val undoRecordId: String? = null, val pantryBefore: List<PantryItem>? = null)
 
 data class UiState(
     val screen: Screen = Screen.Home,
@@ -79,6 +87,8 @@ data class UiState(
     val history: List<HistoryEntry> = emptyList(),
     /** Foods the user entered by hand or read from a label, sorted by name. */
     val myFoods: List<Product> = emptyList(),
+    /** Opened packs the user keeps to eat later, newest first. */
+    val pantry: List<PantryItem> = emptyList(),
     /** Entries this app logged today, newest first. */
     val today: List<LoggedEntry> = emptyList(),
     val health: HealthStatus = HealthStatus.Checking,
@@ -98,6 +108,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val historyStore = TextFileStore(application, "history.json")
     private val myFoodsStore = TextFileStore(application, "myfoods.json")
     private val journalStore = TextFileStore(application, "journal.json")
+    private val pantryStore = TextFileStore(application, "pantry.json")
     private var journal: List<LoggedEntry> = emptyList()
     private val updater = AppUpdater(application)
     private var lastUpdateCheck: Long? = null
@@ -135,7 +146,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val history = FoodHistory.decode(historyText, now)
             val myFoods = MyFoods.decode(myFoodsText)
             journal = Journal.decode(journalStore.read())
-            _state.update { it.copy(history = history, myFoods = myFoods) }
+            val pantry = Pantry.decode(pantryStore.read())
+            _state.update { it.copy(history = history, myFoods = myFoods, pantry = pantry) }
             refresh()
         }
     }
@@ -215,6 +227,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val barcode = Barcodes.normalize(raw)
         if (barcode == null) {
             show("Unsupported barcode: $raw")
+            return
+        }
+        // A pack already in the pantry is eaten from rather than opened again; "New pack" is offered there.
+        Pantry.find(_state.value.pantry, barcode)?.let {
+            openPantryItem(it)
             return
         }
         // The user's own entries and products logged before are re-used directly, which also works offline.
@@ -400,7 +417,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun goHome() = navigate(Screen.Home)
 
-    fun log(product: Product, grams: Double, meal: MealSlot) {
+    /**
+     * Logs [grams] of [product]. With [pantryId] the grams are taken from that pantry pack; with
+     * [keepGramsLeft] the rest of a newly opened pack is kept in the pantry.
+     */
+    fun log(product: Product, grams: Double, meal: MealSlot, keepGramsLeft: Double? = null, pantryId: String? = null) {
         val editing = (_state.value.screen as? Screen.Portion)?.editing
         viewModelScope.launch {
             // An edited entry keeps its original time; FoodSink can only add and delete, so it is replaced.
@@ -416,6 +437,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val entry = LoggedEntry(recordId, product.name, grams, meal, product.per100g.forPortion(grams), time.toEpochMilli())
             saveJournal(Journal.add(journal, entry))
             if (editing != null) {
+                // An edit changes only the entry: the history count and the pantry stay as they were.
                 try {
                     sink.delete(editing.recordId)
                     saveJournal(Journal.remove(journal, editing.recordId))
@@ -429,23 +451,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             showToday()
             updateHistory(FoodHistory.record(_state.value.history, product, time.toEpochMilli()))
+            val pantryBefore = _state.value.pantry
+            val pantryAfter = when {
+                pantryId != null -> Pantry.eat(pantryBefore, pantryId, grams)
+                keepGramsLeft != null -> Pantry.keep(
+                    pantryBefore,
+                    PantryItem(
+                        id = UUID.randomUUID().toString(),
+                        product = product,
+                        gramsLeft = keepGramsLeft,
+                        totalGrams = product.packageGrams ?: (grams + keepGramsLeft),
+                        openedAtMillis = time.toEpochMilli(),
+                    ),
+                )
+                else -> pantryBefore
+            }
+            if (pantryAfter != pantryBefore) updatePantry(pantryAfter)
             _state.update { it.copy(screen = Screen.Home) }
-            show("Logged ${formatGrams(grams)} g of ${product.name}", undoRecordId = recordId)
+            val finished = pantryId != null && pantryAfter.none { it.id == pantryId }
+            show(
+                if (finished) "Logged ${formatGrams(grams)} g. Finished ${product.name}." else "Logged ${formatGrams(grams)} g of ${product.name}",
+                undoRecordId = recordId,
+                pantryBefore = pantryBefore.takeIf { pantryAfter != it },
+            )
+        }
+    }
+
+    /** Logs one serving from a pantry pack for the current meal; packs without a serving size ask for the amount. */
+    fun eatOne(item: PantryItem) {
+        val grams = item.oneServingGrams ?: return openPantryItem(item)
+        log(item.product, grams, defaultMeal(), pantryId = item.id)
+    }
+
+    fun openPantryItem(item: PantryItem) = navigate(Screen.Portion(item.product, item.id))
+
+    /** Logs from a fresh pack of a product that is already in the pantry. */
+    fun newPack(product: Product) = navigate(Screen.Portion(product))
+
+    /** Removes a pack from the pantry; what was logged from it stays logged. */
+    fun deletePantryItem(item: PantryItem) = updatePantry(Pantry.remove(_state.value.pantry, item.id))
+
+    /** The snackbar's "Undo": deletes the record and puts the pantry back as it was before that log. */
+    fun undo(message: Message) {
+        val recordId = message.undoRecordId ?: return
+        viewModelScope.launch {
+            if (deleteRecord(recordId)) message.pantryBefore?.let(::updatePantry)
         }
     }
 
     /** Deletes a logged entry from Health Connect and the local journal. */
     fun delete(recordId: String) {
-        viewModelScope.launch {
-            try {
-                sink.delete(recordId)
-            } catch (e: Exception) {
-                show("Could not delete: ${e.message ?: e.javaClass.simpleName}")
-                return@launch
-            }
-            saveJournal(Journal.remove(journal, recordId))
-            showToday()
+        viewModelScope.launch { deleteRecord(recordId) }
+    }
+
+    private suspend fun deleteRecord(recordId: String): Boolean {
+        try {
+            sink.delete(recordId)
+        } catch (e: Exception) {
+            show("Could not delete: ${e.message ?: e.javaClass.simpleName}")
+            return false
         }
+        saveJournal(Journal.remove(journal, recordId))
+        showToday()
+        return true
     }
 
     fun messageShown() = _state.update { it.copy(message = null) }
@@ -462,6 +530,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { historyStore.write(FoodHistory.encode(list)) }
     }
 
+    private fun updatePantry(list: List<PantryItem>) {
+        _state.update { it.copy(pantry = list) }
+        viewModelScope.launch { pantryStore.write(Pantry.encode(list)) }
+    }
+
     private fun updateMyFoods(list: List<Product>) {
         _state.update { it.copy(myFoods = list) }
         viewModelScope.launch { myFoodsStore.write(MyFoods.encode(list)) }
@@ -469,8 +542,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun navigate(screen: Screen) = _state.update { it.copy(screen = screen) }
 
-    private fun show(text: String, undoRecordId: String? = null) =
-        _state.update { it.copy(message = Message(text, undoRecordId)) }
+    private fun show(text: String, undoRecordId: String? = null, pantryBefore: List<PantryItem>? = null) =
+        _state.update { it.copy(message = Message(text, undoRecordId, pantryBefore)) }
 
     private fun blankProduct(barcode: String?) = Product(
         barcode = barcode ?: "manual-${UUID.randomUUID()}",

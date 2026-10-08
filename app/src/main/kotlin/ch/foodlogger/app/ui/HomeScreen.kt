@@ -9,15 +9,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -26,7 +32,10 @@ import ch.foodlogger.app.HealthStatus
 import ch.foodlogger.app.UiState
 import ch.foodlogger.core.AppRelease
 import ch.foodlogger.core.LoggedEntry
+import ch.foodlogger.core.Pantry
+import ch.foodlogger.core.PantryItem
 import ch.foodlogger.core.Product
+import java.time.ZoneId
 
 @Composable
 fun HomeScreen(
@@ -39,6 +48,9 @@ fun HomeScreen(
     onMyFoods: () -> Unit,
     onFood: (Product) -> Unit,
     onRemoveFromHistory: (Product) -> Unit,
+    onPantryItem: (PantryItem) -> Unit,
+    onEatOne: (PantryItem) -> Unit,
+    onDeletePantryItem: (PantryItem) -> Unit,
     onToday: () -> Unit,
     onInstallUpdate: () -> Unit,
     onCheckForUpdate: () -> Unit,
@@ -46,6 +58,19 @@ fun HomeScreen(
     onInstallHealthConnect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var pendingPantryDelete by remember { mutableStateOf<PantryItem?>(null) }
+    pendingPantryDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { pendingPantryDelete = null },
+            title = { Text("Remove from pantry?") },
+            text = { Text("\"${item.product.name}\" (${amountLeft(item)}) leaves the pantry. What you logged from it stays logged.") },
+            confirmButton = {
+                TextButton(onClick = { onDeletePantryItem(item); pendingPantryDelete = null }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { pendingPantryDelete = null }) { Text("Cancel") } },
+        )
+    }
+
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(16.dp),
@@ -80,6 +105,15 @@ fun HomeScreen(
         item {
             TextButton(onClick = onMyFoods) {
                 Text(if (state.myFoods.isEmpty()) "My foods" else "My foods (${state.myFoods.size})")
+            }
+        }
+        if (state.pantry.isNotEmpty()) {
+            item { SectionTitle("Pantry") }
+            items(state.pantry, key = { "pantry-${it.id}" }) { item ->
+                Column {
+                    PantryRow(item, onOpen = { onPantryItem(item) }, onEatOne = { onEatOne(item) }, onDelete = { pendingPantryDelete = item })
+                    HorizontalDivider()
+                }
             }
         }
         if (state.history.isNotEmpty()) {
@@ -134,6 +168,33 @@ private fun UpdateBanner(release: AppRelease, updating: Boolean, onInstall: () -
             Button(onClick = onInstall, enabled = !updating) { Text(if (updating) "Downloading…" else "Install update") }
         }
     }
+}
+
+/** A kept pack: what is left and since when, "Eat 1" (when a serving is known) and Delete. */
+@Composable
+private fun PantryRow(item: PantryItem, onOpen: () -> Unit, onEatOne: () -> Unit, onDelete: () -> Unit) {
+    val days = Pantry.daysOpen(item, System.currentTimeMillis(), ZoneId.systemDefault())
+    val opened = when (days) {
+        0L -> "opened today"
+        1L -> "opened yesterday"
+        else -> "opened $days days ago"
+    }
+    ListItem(
+        headlineContent = { Text(item.product.name) },
+        supportingContent = {
+            Column {
+                Text(amountLeft(item))
+                Text(opened, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onDelete) { Text("Delete") }
+                if (item.oneServingGrams != null) Button(onClick = onEatOne) { Text("Eat 1") }
+            }
+        },
+        modifier = Modifier.clickableRow(onOpen),
+    )
 }
 
 /** One line with today's totals; tapping it opens the Today page with the entries. */
