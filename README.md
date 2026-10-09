@@ -10,7 +10,13 @@ which has decent Swiss coverage.
 The home screen splits adding food by kind:
 
 - **Packaged food**: *Scan barcode*, *Search*, *Barcode photo* or *Read label*.
-- **Generic food** (fruit, bakery, home cooking): *Enter by hand*. Searching a list of generic foods is planned.
+- **Generic food** (fruit, bakery, home cooking): *Search* or *Enter by hand*.
+
+**Generic food search** looks through the [Swiss Food Composition Database](https://naehrwertdaten.ch)
+(Federal Food Safety and Veterinary Office BLV, generic foods V 7.1, about 1,200 foods), which ships inside the
+app: results update while typing and work offline. Foods you logged before come first. For common foods
+(fruit, eggs, croissants, bread) the amount screen offers a typical piece or slice; these weights are the app's
+own estimates, since the database has none. Names are in English, German and French; Italian can be added by passing `it=...` to the converter.
 
 1. **Scan barcode** (Google code scanner from Play services, no camera permission needed), or
    **Barcode photo** to read it from a picture in your gallery.
@@ -82,7 +88,8 @@ Requires Android 8.0+, Google Play services, and Health Connect (built in from A
 
 | Path | What |
 | --- | --- |
-| `core/` | Plain Kotlin/JVM build: Open Food Facts parsing, nutrition label parsing, nutrient maths, barcode validation, food search, Food history, My foods and the pantry, journal of logged entries. Tested with `./gradlew -p core test`, no Android SDK needed. |
+| `core/` | Plain Kotlin/JVM build: Open Food Facts parsing, nutrition label parsing, nutrient maths, barcode validation, food search, generic foods, Food history, My foods and the pantry, journal of logged entries. Tested with `./gradlew -p core test`, no Android SDK needed. |
+| `tools/convert_swiss_foods.py` | Converts the database's Excel file(s) into `app/src/main/assets/generic_foods.json`; re-run it for a new database version. Each language edition passed (`en=file.xlsx de=file.xlsx …`) adds names in that language. |
 | `app/` | Android app (Jetpack Compose). `HealthConnectSink` writes the records; `FoodSink` is the seam for another destination (e.g. the Google Health cloud API). |
 
 ## Roadmap

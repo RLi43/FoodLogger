@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ch.foodlogger.app.formatGrams
+import ch.foodlogger.core.GenericFoods
 import ch.foodlogger.core.LoggedEntry
 import ch.foodlogger.core.MealSlot
 import ch.foodlogger.core.Nutrients
@@ -76,7 +77,7 @@ fun PortionScreen(
     ) {
         Text(product.name, style = MaterialTheme.typography.headlineSmall)
         Text(
-            listOfNotNull(product.brand, product.source, product.barcode.takeUnless { it.startsWith("manual-") })
+            listOfNotNull(product.brand, product.source, product.barcode.takeUnless { it.startsWith("manual-") || GenericFoods.isGeneric(product) })
                 .joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
         )
@@ -94,7 +95,8 @@ fun PortionScreen(
         OutlinedTextField(
             value = gramsText,
             onValueChange = { gramsText = it },
-            label = { Text("Amount (g or ml)") },
+            // The database gives generic foods per 100 g, also liquids (honey is 1.4 g per ml), so they take grams.
+            label = { Text(if (GenericFoods.isGeneric(product)) "Amount (g)" else "Amount (g or ml)") },
             singleLine = true,
             isError = grams == null,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),

@@ -10,6 +10,8 @@ import ch.foodlogger.core.AppRelease
 import ch.foodlogger.core.Barcodes
 import ch.foodlogger.core.FoodHistory
 import ch.foodlogger.core.FoodSearch
+import ch.foodlogger.core.GenericFood
+import ch.foodlogger.core.GenericFoods
 import ch.foodlogger.core.HistoryEntry
 import ch.foodlogger.core.LabelScan
 import ch.foodlogger.core.Journal
@@ -22,11 +24,13 @@ import ch.foodlogger.core.Product
 import ch.foodlogger.core.SearchHit
 import ch.foodlogger.core.SearchLimit
 import ch.foodlogger.core.Store
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -71,6 +75,9 @@ sealed interface Screen {
 
     data object MyFoods : Screen
 
+    /** Search in the bundled list of generic foods (fruit, bread, cheese, dishes); runs while typing, offline. */
+    data class GenericSearch(val query: String = "") : Screen
+
     /** Entries logged today, which can be edited or deleted. */
     data object Today : Screen
 }
@@ -91,6 +98,9 @@ data class UiState(
     val pantry: List<PantryItem> = emptyList(),
     /** Entries this app logged today, newest first. */
     val today: List<LoggedEntry> = emptyList(),
+    /** The bundled generic food list, loaded the first time generic search opens. */
+    /** The bundled generic food list: null while loading, empty when it could not be read. */
+    val genericFoods: List<GenericFood>? = null,
     val health: HealthStatus = HealthStatus.Checking,
     val message: Message? = null,
     /** A newer build published on GitHub, if any. */
@@ -282,7 +292,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Generic food (fruit, bakery, home cooking): the form without brand or label. */
     fun startGenericEntry() = navigate(Screen.Manual(blankProduct(null), generic = true))
 
-    fun editProduct(product: Product) = navigate(Screen.Manual(product))
+    fun editProduct(product: Product) = navigate(Screen.Manual(product, generic = GenericFoods.isGeneric(product)))
 
     /** Saves a food the user entered or corrected to My foods, then asks for the portion. */
     fun confirmManual(product: Product) {
@@ -355,6 +365,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun updateSearch(change: (Screen.Search) -> Screen.Search) = _state.update { state ->
         val current = state.screen as? Screen.Search
         if (current != null) state.copy(screen = change(current)) else state
+    }
+
+    fun openGenericSearch() {
+        navigate(Screen.GenericSearch())
+        if (!_state.value.genericFoods.isNullOrEmpty()) return
+        _state.update { it.copy(genericFoods = null) }
+        viewModelScope.launch {
+            val foods = withContext(Dispatchers.IO) {
+                runCatching { getApplication<Application>().assets.open(GENERIC_FOODS_ASSET).bufferedReader().use { it.readText() } }
+                    .map { GenericFoods.parse(it).foods }
+                    .getOrDefault(emptyList())
+            }
+            _state.update { it.copy(genericFoods = foods) }
+        }
+    }
+
+    fun setGenericQuery(query: String) = _state.update { state ->
+        if (state.screen is Screen.GenericSearch) state.copy(screen = Screen.GenericSearch(query)) else state
+    }
+
+    /** Opens a generic food like any other product; a copy in the history (logged before) is the same data. */
+    fun selectGenericFood(food: GenericFood) {
+        val product = food.toProduct(preferredLanguages())
+        navigate(Screen.Portion(findKnown(product.barcode) ?: product))
+    }
+
+    /** Nothing found: the generic form, with the typed words as the name. */
+    fun enterGenericByHand() {
+        val query = (_state.value.screen as? Screen.GenericSearch)?.query?.trim().orEmpty()
+        navigate(Screen.Manual(blankProduct(null).copy(name = query), generic = true))
     }
 
     fun openMyFoods() = navigate(Screen.MyFoods)
@@ -555,6 +595,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val MANUAL_SOURCE = "Manual"
         private const val UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000L
         private const val SEARCH_CACHE_SIZE = 20
+        private const val GENERIC_FOODS_ASSET = "generic_foods.json"
         private const val USER_AGENT = "FoodLogger-Android/0.1 (https://github.com/RLi43/FoodLogger)"
 
         /** Device languages first, then the Swiss national languages and English as fallbacks. */
