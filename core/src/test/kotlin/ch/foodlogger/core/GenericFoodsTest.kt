@@ -74,5 +74,11 @@ class GenericFoodsTest {
         assertTrue(GenericFoods.TYPICAL_PORTIONS.keys.all { it in ids }, "portion IDs missing from the database")
         assertEquals(378, GenericFoods.search(list.foods, "apple", en).first().id)
         assertEquals(381, GenericFoods.search(list.foods, "banana", en).first().id)
+        val de = listOf("de")
+        assertTrue(list.foods.all { "de" in it.names && "fr" in it.names }, "German or French name missing")
+        assertEquals(378, GenericFoods.search(list.foods, "Apfel", de).first().id)
+        assertEquals(378, GenericFoods.search(list.foods, "pomme", listOf("fr")).first().id)
+        assertEquals("Apfel, roh", list.foods.first { it.id == 378 }.name(de))
+        assertTrue(GenericFoods.search(list.foods, "Gipfeli", de).isNotEmpty())
     }
 }

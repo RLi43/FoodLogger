@@ -16,7 +16,7 @@ The home screen splits adding food by kind:
 (Federal Food Safety and Veterinary Office BLV, generic foods V 7.1, about 1,200 foods), which ships inside the
 app: results update while typing and work offline. Foods you logged before come first. For common foods
 (fruit, eggs, croissants, bread) the amount screen offers a typical piece or slice; these weights are the app's
-own estimates, since the database has none. Names are currently in English only.
+own estimates, since the database has none. Names are in English, German and French; Italian can be added by passing `it=...` to the converter.
 
 1. **Scan barcode** (Google code scanner from Play services, no camera permission needed), or
    **Barcode photo** to read it from a picture in your gallery.
