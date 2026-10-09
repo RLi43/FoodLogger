@@ -236,7 +236,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onScanned(raw: String) {
         val barcode = Barcodes.normalize(raw)
         if (barcode == null) {
-            show("Unsupported barcode: $raw")
+            // A 2D code may hold only a web address or batch data, without the product number.
+            show(if (raw.length > 14) "This code has no product number. Try the barcode, or Search." else "Unsupported barcode: $raw")
             return
         }
         // A pack already in the pantry is eaten from rather than opened again; "New pack" is offered there.
