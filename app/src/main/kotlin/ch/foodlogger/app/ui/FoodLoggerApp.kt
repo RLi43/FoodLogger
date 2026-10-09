@@ -69,6 +69,7 @@ fun FoodLoggerApp(
                 onSearch = viewModel::openSearch,
                 onReadLabel = viewModel::startLabelEntry,
                 onGenericEntry = viewModel::startGenericEntry,
+                onGenericSearch = viewModel::openGenericSearch,
                 onMyFoods = viewModel::openMyFoods,
                 onFood = viewModel::selectFood,
                 onRemoveFromHistory = viewModel::removeFromHistory,
@@ -125,6 +126,16 @@ fun FoodLoggerApp(
                 onReadLabel = viewModel::readLabelFromSearch,
                 modifier = modifier,
             )
+            is Screen.GenericSearch -> GenericSearchScreen(
+                query = screen.query,
+                foods = state.genericFoods,
+                loggedBefore = state.history.map { it.product.barcode }.toSet(),
+                languages = MainViewModel.preferredLanguages(),
+                onQueryChange = viewModel::setGenericQuery,
+                onSelect = viewModel::selectGenericFood,
+                onEnterByHand = viewModel::enterGenericByHand,
+                modifier = modifier,
+            )
             Screen.MyFoods -> MyFoodsScreen(
                 foods = state.myFoods,
                 onSelect = viewModel::selectFood,
@@ -148,5 +159,6 @@ private fun titleFor(screen: Screen) = when (screen) {
     is Screen.Manual -> if (screen.generic) "Generic food" else "Nutrition per 100 g"
     is Screen.Search -> "Search packaged food"
     Screen.MyFoods -> "My foods"
+    is Screen.GenericSearch -> "Search generic food"
     Screen.Today -> "Today"
 }

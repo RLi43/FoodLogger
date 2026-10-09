@@ -45,6 +45,7 @@ fun HomeScreen(
     onSearch: () -> Unit,
     onReadLabel: () -> Unit,
     onGenericEntry: () -> Unit,
+    onGenericSearch: () -> Unit,
     onMyFoods: () -> Unit,
     onFood: (Product) -> Unit,
     onRemoveFromHistory: (Product) -> Unit,
@@ -97,9 +98,8 @@ fun HomeScreen(
         item { SectionTitle("Generic food") }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onGenericSearch, modifier = Modifier.weight(1f)) { Text("Search") }
                 OutlinedButton(onClick = onGenericEntry, modifier = Modifier.weight(1f)) { Text("Enter by hand") }
-                // Search in a list of generic foods (fruit, bakery, cheese from the counter) is planned.
-                OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Search (coming later)") }
             }
         }
         item {

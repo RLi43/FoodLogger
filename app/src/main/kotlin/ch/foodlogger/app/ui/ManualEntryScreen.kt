@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ch.foodlogger.app.MainViewModel
+import ch.foodlogger.core.GenericFoods
 import ch.foodlogger.core.LabelScan
 import ch.foodlogger.core.Nutrients
 import ch.foodlogger.core.Product
@@ -89,7 +90,7 @@ fun ManualEntryScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         hint?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (!draft.barcode.startsWith("manual-")) {
+        if (!draft.barcode.startsWith("manual-") && !GenericFoods.isGeneric(draft)) {
             Text("Barcode ${draft.barcode}", style = MaterialTheme.typography.bodySmall)
         }
         TextInput(name, "Name *")

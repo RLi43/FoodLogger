@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ch.foodlogger.app.formatGrams
+import ch.foodlogger.core.GenericFoods
 import ch.foodlogger.core.LoggedEntry
 import ch.foodlogger.core.MealSlot
 import ch.foodlogger.core.Nutrients
@@ -76,7 +77,7 @@ fun PortionScreen(
     ) {
         Text(product.name, style = MaterialTheme.typography.headlineSmall)
         Text(
-            listOfNotNull(product.brand, product.source, product.barcode.takeUnless { it.startsWith("manual-") })
+            listOfNotNull(product.brand, product.source, product.barcode.takeUnless { it.startsWith("manual-") || GenericFoods.isGeneric(product) })
                 .joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
         )
