@@ -61,3 +61,46 @@ class NutrientsTest {
         assertTrue(!Nutrients(fat = 0.0).isEmpty)
     }
 }
+
+class TwoDimensionalCodesTest {
+    // The GS1 Data Matrix on a Coop pack, as ML Kit reports it: fields of varying length end with GS.
+    private val coop = "01076275384132751020261008\u001D15261011422756"
+
+    @Test
+    fun gs1DataMatrix() {
+        assertEquals("7627538413275", Barcodes.normalize(coop))
+        assertEquals("7627538413275", Barcodes.normalize("]d2$coop"))
+        assertEquals("7627538413275", Barcodes.normalize("\u001D$coop"))
+        assertEquals("7627538413275", Barcodes.normalize("(01)07627538413275(10)20261008(15)261011(422)756"))
+    }
+
+    @Test
+    fun productNumberAfterOtherFields() {
+        assertEquals("7627538413275", Barcodes.normalize("15261011100ABC\u001D0107627538413275"))
+        // Only fixed-length fields: no separator at all.
+        assertEquals("7627538413275", Barcodes.normalize("152610110107627538413275"))
+    }
+
+    @Test
+    fun shortGtins() {
+        assertEquals("96385074", Barcodes.normalize("0100000096385074"))
+        assertEquals("0036000291452", Barcodes.normalize("0100036000291452"))
+        assertEquals("10012345678902", Barcodes.normalize("0110012345678902"))
+    }
+
+    @Test
+    fun digitalLink() {
+        assertEquals("7627538413275", Barcodes.normalize("https://id.gs1.org/01/07627538413275/10/20261008?15=261011"))
+        assertEquals("7627538413275", Barcodes.normalize("https://example.com/products/01/7627538413275"))
+        assertEquals("96385074", Barcodes.normalize("HTTPS://ID.GS1.ORG/01/96385074"))
+    }
+
+    @Test
+    fun noProductNumber() {
+        assertNull(Barcodes.normalize("https://www.coop.ch/de/"))
+        assertNull(Barcodes.normalize("https://id.gs1.org/01/07627538413270"))
+        assertNull(Barcodes.normalize("0107627538413270"))
+        assertNull(Barcodes.normalize("10ABC123\u001D21XYZ"))
+        assertNull(Barcodes.normalize("hello world"))
+    }
+}

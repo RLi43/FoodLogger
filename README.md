@@ -19,7 +19,8 @@ app: results update while typing and work offline. Foods you logged before come 
 own estimates, since the database has none. Names are in English, German and French; Italian can be added by passing `it=...` to the converter.
 
 1. **Scan barcode** (Google code scanner from Play services, no camera permission needed), or
-   **Barcode photo** to read it from a picture in your gallery.
+   **Barcode photo** to read it from a picture in your gallery. Square 2D codes (GS1 Data Matrix, QR codes,
+   GS1 Digital Link) work too when they carry the product number.
 2. Product is looked up on Open Food Facts (names in your device language, then de/fr/it/en).
    Products from *My foods* or the *Food history* are re-used directly, also offline.
 3. Choose the amount (serving, 50/100/200 g or any value) and the meal (pre-selected from the time of day).
