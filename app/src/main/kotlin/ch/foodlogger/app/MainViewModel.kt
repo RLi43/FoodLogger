@@ -99,7 +99,8 @@ data class UiState(
     /** Entries this app logged today, newest first. */
     val today: List<LoggedEntry> = emptyList(),
     /** The bundled generic food list, loaded the first time generic search opens. */
-    val genericFoods: List<GenericFood> = emptyList(),
+    /** The bundled generic food list: null while loading, empty when it could not be read. */
+    val genericFoods: List<GenericFood>? = null,
     val health: HealthStatus = HealthStatus.Checking,
     val message: Message? = null,
     /** A newer build published on GitHub, if any. */
@@ -291,7 +292,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Generic food (fruit, bakery, home cooking): the form without brand or label. */
     fun startGenericEntry() = navigate(Screen.Manual(blankProduct(null), generic = true))
 
-    fun editProduct(product: Product) = navigate(Screen.Manual(product))
+    fun editProduct(product: Product) = navigate(Screen.Manual(product, generic = GenericFoods.isGeneric(product)))
 
     /** Saves a food the user entered or corrected to My foods, then asks for the portion. */
     fun confirmManual(product: Product) {
@@ -368,7 +369,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openGenericSearch() {
         navigate(Screen.GenericSearch())
-        if (_state.value.genericFoods.isNotEmpty()) return
+        if (!_state.value.genericFoods.isNullOrEmpty()) return
+        _state.update { it.copy(genericFoods = null) }
         viewModelScope.launch {
             val foods = withContext(Dispatchers.IO) {
                 runCatching { getApplication<Application>().assets.open(GENERIC_FOODS_ASSET).bufferedReader().use { it.readText() } }

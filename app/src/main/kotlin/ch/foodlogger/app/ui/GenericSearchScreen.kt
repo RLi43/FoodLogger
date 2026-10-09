@@ -29,7 +29,8 @@ import ch.foodlogger.core.GenericFoods
 @Composable
 fun GenericSearchScreen(
     query: String,
-    foods: List<GenericFood>,
+    /** null while loading. */
+    foods: List<GenericFood>?,
     loggedBefore: Set<String>,
     languages: List<String>,
     onQueryChange: (String) -> Unit,
@@ -38,7 +39,9 @@ fun GenericSearchScreen(
     modifier: Modifier = Modifier,
 ) {
     val results = remember(foods, query, loggedBefore) {
-        GenericFoods.search(foods, query, languages).sortedBy { "${GenericFoods.ID_PREFIX}${it.id}" !in loggedBefore }
+        GenericFoods.search(foods.orEmpty(), query, languages, limit = Int.MAX_VALUE)
+            .sortedBy { "${GenericFoods.ID_PREFIX}${it.id}" !in loggedBefore }
+            .take(MAX_RESULTS)
     }
 
     LazyColumn(
@@ -56,8 +59,11 @@ fun GenericSearchScreen(
             )
         }
         when {
-            foods.isEmpty() -> item {
+            foods == null -> item {
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            }
+            foods.isEmpty() -> item {
+                Text("The food list could not be loaded. Go back and open it again.", color = MaterialTheme.colorScheme.error)
             }
             query.isNotBlank() && results.isEmpty() -> item {
                 Text("No generic food found for \"${query.trim()}\".", style = MaterialTheme.typography.bodySmall)
@@ -85,3 +91,5 @@ fun GenericSearchScreen(
         }
     }
 }
+
+private const val MAX_RESULTS = 50
