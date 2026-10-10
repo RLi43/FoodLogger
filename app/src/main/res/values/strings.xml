@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">FoodLogger</string>
+    <string name="share_receipt">FoodLogger pantry</string>
 </resources>

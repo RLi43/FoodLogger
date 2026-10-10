@@ -21,10 +21,17 @@ import ch.foodlogger.core.MyFoods
 import ch.foodlogger.core.Pantry
 import ch.foodlogger.core.PantryItem
 import ch.foodlogger.core.Product
+import ch.foodlogger.core.Receipt
+import ch.foodlogger.core.ReceiptLine
+import ch.foodlogger.core.ReceiptMatch
+import ch.foodlogger.core.ReceiptMatching
+import ch.foodlogger.core.Receipts
 import ch.foodlogger.core.SearchHit
 import ch.foodlogger.core.SearchLimit
 import ch.foodlogger.core.Store
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,7 +87,47 @@ sealed interface Screen {
 
     /** Entries logged today, which can be edited or deleted. */
     data object Today : Screen
+
+    /** A shared or picked receipt is being read. */
+    data object ReceiptReading : Screen
+
+    /** The checklist of the receipt in [UiState.receipt]: tick what goes into the pantry and fix matches. */
+    data object Receipt : Screen
 }
+
+/**
+ * One line of the receipt under review. [product] is the match (remembered, confident or chosen by the user);
+ * [guesses] are candidates for the user to pick from. [grams] is the field's text: the receipt weight, pack
+ * size or matched product's pack size, or what the user typed. [queued] while an Open Food Facts search is
+ * still to come for it.
+ */
+data class ReceiptRow(
+    val id: Int,
+    val line: ReceiptLine,
+    val key: String,
+    val ticked: Boolean,
+    val product: Product? = null,
+    val guesses: List<Product> = emptyList(),
+    val grams: String = "",
+    val queued: Boolean = false,
+    /** The user turned down the guesses or the match: show the ways to find the product instead. */
+    val rejected: Boolean = false,
+) {
+    val gramsValue: Double? get() = grams.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 && it.isFinite() }
+}
+
+data class ReceiptDraft(val store: Store?, val date: LocalDate?, val rows: List<ReceiptRow>)
+
+/** Where a product the user picks goes instead of the amount screen: a receipt row, or a pantry pack without a match. */
+sealed interface MatchTarget {
+    val name: String
+
+    data class Row(val rowId: Int, override val name: String) : MatchTarget
+    data class Pack(val pantryId: String, override val name: String) : MatchTarget
+}
+
+/** Ways to find the product for a receipt line when no guess fits. */
+enum class MatchWay { SEARCH, SCAN, LABEL, GENERIC, BY_HAND }
 
 /**
  * A snackbar message; [undoRecordId] adds an "Undo" action that deletes that record and, when the log
@@ -107,6 +154,10 @@ data class UiState(
     val update: AppRelease? = null,
     val updating: Boolean = false,
     val checkingUpdate: Boolean = false,
+    /** The receipt being reviewed, kept while the user looks for a product for one of its lines. */
+    val receipt: ReceiptDraft? = null,
+    /** While set, the product the user picks answers this instead of opening the amount screen. */
+    val matching: MatchTarget? = null,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -124,6 +175,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastUpdateCheck: Long? = null
     val labelReader = LabelReader(application)
     private val photoBarcodeReader = PhotoBarcodeReader(application)
+    val receiptReader = ReceiptReader(application)
+    private val receiptMatchesStore = TextFileStore(application, "receipt_matches.json")
+    /** Products the user chose for receipt lines, by store and line. */
+    private var receiptMatches: List<ReceiptMatch> = emptyList()
+    /** Searches Open Food Facts for the receipt's unmatched lines, one at a time within the limit. */
+    private var receiptSearchJob: Job? = null
 
     /** Open Food Facts results by normalized query, so repeating a search sends no request. */
     private val searchCache = object : LinkedHashMap<String, List<SearchHit>>() {
@@ -157,6 +214,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val myFoods = MyFoods.decode(myFoodsText)
             journal = Journal.decode(journalStore.read())
             val pantry = Pantry.decode(pantryStore.read())
+            receiptMatches = ReceiptMatching.decode(receiptMatchesStore.read())
             _state.update { it.copy(history = history, myFoods = myFoods, pantry = pantry) }
             refresh()
         }
@@ -241,31 +299,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         // A pack already in the pantry is eaten from rather than opened again; "New pack" is offered there.
-        Pantry.find(_state.value.pantry, barcode)?.let {
-            openPantryItem(it)
-            return
+        // While matching a receipt line, the scanned product is the answer instead.
+        if (_state.value.matching == null) {
+            Pantry.find(_state.value.pantry, barcode)?.let {
+                openPantryItem(it)
+                return
+            }
         }
         // The user's own entries and products logged before are re-used directly, which also works offline.
         findKnown(barcode)?.let {
-            navigate(Screen.Portion(it))
+            navigate(chosen(it))
             return
         }
         navigate(Screen.Loading(barcode))
         viewModelScope.launch {
-            val next = when (val result = repository.lookup(barcode, preferredLanguages())) {
+            val result = repository.lookup(barcode, preferredLanguages())
+            // Ignore the result if the user navigated away while it was loading.
+            if (_state.value.screen != Screen.Loading(barcode)) return@launch
+            val next = when (result) {
                 is LookupResult.Found ->
                     if (result.product.per100g.isEmpty) {
                         Screen.Manual(result.product, "No nutrition values on Open Food Facts yet.")
                     } else {
-                        Screen.Portion(result.product)
+                        chosen(result.product)
                     }
                 LookupResult.NotFound ->
                     Screen.Manual(blankProduct(barcode), "Product $barcode is not on Open Food Facts.")
                 is LookupResult.Failed ->
                     Screen.Manual(blankProduct(barcode), result.reason)
             }
-            // Ignore the result if the user navigated away while it was loading.
-            _state.update { if (it.screen == Screen.Loading(barcode)) it.copy(screen = next) else it }
+            navigate(next)
         }
     }
 
@@ -300,7 +363,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateMyFoods(MyFoods.save(_state.value.myFoods, product))
         // Keep the history's copy in step, so it shows the corrected values too.
         updateHistory(FoodHistory.update(_state.value.history, product))
-        navigate(Screen.Portion(product))
+        navigate(chosen(product))
     }
 
     fun openSearch() = navigate(Screen.Search())
@@ -351,9 +414,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectSearchHit(product: Product) {
         val known = findKnown(product.barcode)
         when {
-            known != null -> navigate(Screen.Portion(known))
+            known != null -> navigate(chosen(known))
             product.per100g.isEmpty -> navigate(Screen.Manual(product, "No nutrition values on Open Food Facts yet."))
-            else -> navigate(Screen.Portion(product))
+            else -> navigate(chosen(product))
         }
     }
 
@@ -368,18 +431,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (current != null) state.copy(screen = change(current)) else state
     }
 
-    fun openGenericSearch() {
-        navigate(Screen.GenericSearch())
+    fun openGenericSearch(query: String = "") {
+        navigate(Screen.GenericSearch(query))
         if (!_state.value.genericFoods.isNullOrEmpty()) return
         _state.update { it.copy(genericFoods = null) }
-        viewModelScope.launch {
-            val foods = withContext(Dispatchers.IO) {
-                runCatching { getApplication<Application>().assets.open(GENERIC_FOODS_ASSET).bufferedReader().use { it.readText() } }
-                    .map { GenericFoods.parse(it).foods }
-                    .getOrDefault(emptyList())
-            }
-            _state.update { it.copy(genericFoods = foods) }
+        viewModelScope.launch { loadGenericFoods() }
+    }
+
+    /** The bundled generic food list, read once; empty when it cannot be read. */
+    private suspend fun loadGenericFoods(): List<GenericFood> {
+        _state.value.genericFoods?.takeIf { it.isNotEmpty() }?.let { return it }
+        val foods = withContext(Dispatchers.IO) {
+            runCatching { getApplication<Application>().assets.open(GENERIC_FOODS_ASSET).bufferedReader().use { it.readText() } }
+                .map { GenericFoods.parse(it).foods }
+                .getOrDefault(emptyList())
         }
+        _state.update { it.copy(genericFoods = foods) }
+        return foods
     }
 
     fun setGenericQuery(query: String) = _state.update { state ->
@@ -389,7 +457,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Opens a generic food like any other product; a copy in the history (logged before) is the same data. */
     fun selectGenericFood(food: GenericFood) {
         val product = food.toProduct(preferredLanguages())
-        navigate(Screen.Portion(findKnown(product.barcode) ?: product))
+        navigate(chosen(findKnown(product.barcode) ?: product))
     }
 
     /** Nothing found: the generic form, with the typed words as the name. */
@@ -437,7 +505,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (current != null && current.draft.barcode == screen.draft.barcode) state.copy(screen = change(current)) else state
     }
 
-    fun selectFood(product: Product) = navigate(Screen.Portion(product))
+    fun selectFood(product: Product) = navigate(chosen(product))
 
     /**
      * Opens the amount screen to change a logged entry's amount or meal. Uses the food's history or
@@ -456,7 +524,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun removeFromHistory(product: Product) = updateHistory(FoodHistory.remove(_state.value.history, product.barcode))
 
-    fun goHome() = navigate(Screen.Home)
+    /** Back: from looking for a receipt line's product to the receipt, otherwise home. */
+    fun goHome() {
+        val matching = _state.value.matching
+        _state.update { it.copy(matching = null) }
+        navigate(if (matching is MatchTarget.Row && _state.value.receipt != null) Screen.Receipt else Screen.Home)
+    }
 
     /**
      * Logs [grams] of [product]. With [pantryId] the grams are taken from that pantry pack; with
@@ -520,11 +593,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Logs one serving from a pantry pack for the current meal; packs without a serving size ask for the amount. */
     fun eatOne(item: PantryItem) {
+        if (item.needsMatch) return matchPantryItem(item)
         val grams = item.oneServingGrams ?: return openPantryItem(item)
         log(item.product, grams, defaultMeal(), pantryId = item.id)
     }
 
-    fun openPantryItem(item: PantryItem) = navigate(Screen.Portion(item.product, item.id))
+    fun openPantryItem(item: PantryItem) {
+        if (item.needsMatch) return matchPantryItem(item)
+        navigate(Screen.Portion(item.product, item.id))
+    }
+
+    /** A pack from a receipt without a product yet: search for it first, then log from it. */
+    private fun matchPantryItem(item: PantryItem) {
+        _state.update { it.copy(matching = MatchTarget.Pack(item.id, item.product.name)) }
+        navigate(Screen.Search(query = ReceiptMatching.query(item.product.name)))
+        runSearch()
+    }
 
     /** Logs from a fresh pack of a product that is already in the pantry. */
     fun newPack(product: Product) = navigate(Screen.Portion(product))
@@ -555,6 +639,222 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         saveJournal(Journal.remove(journal, recordId))
         showToday()
         return true
+    }
+
+    /**
+     * Where a product the user picked goes: the amount screen, or, while matching, the receipt row or pantry
+     * pack it was picked for. The match is remembered for that store and receipt line.
+     */
+    private fun chosen(product: Product): Screen = when (val target = _state.value.matching) {
+        null -> Screen.Portion(product)
+        is MatchTarget.Row -> {
+            _state.update { it.copy(matching = null) }
+            setRowMatch(target.rowId, product)
+            if (_state.value.receipt != null) Screen.Receipt else Screen.Portion(product)
+        }
+        is MatchTarget.Pack -> {
+            _state.update { it.copy(matching = null) }
+            val item = _state.value.pantry.firstOrNull { it.id == target.pantryId }
+            if (item == null) {
+                Screen.Portion(product)
+            } else {
+                updatePantry(Pantry.match(_state.value.pantry, item.id, product))
+                item.receiptKey?.let { rememberMatches(listOf(it to product)) }
+                Screen.Portion(product, item.id)
+            }
+        }
+    }
+
+    /** Reads the receipt at [uri] (a PDF or a photo) and opens its checklist. */
+    fun openReceipt(uri: Uri, mimeType: String?) {
+        receiptSearchJob?.cancel()
+        _state.update { it.copy(receipt = null, matching = null, screen = Screen.ReceiptReading) }
+        viewModelScope.launch {
+            val lines = try {
+                receiptReader.read(uri, mimeType)
+            } catch (e: Exception) {
+                // IOException for an unreadable file, MlKitException while the model is still downloading.
+                if (_state.value.screen == Screen.ReceiptReading) navigate(Screen.Home)
+                show("Could not read the receipt: ${e.message ?: e.javaClass.simpleName}")
+                return@launch
+            }
+            val receipt = Receipts.parse(lines)
+            if (_state.value.screen != Screen.ReceiptReading) return@launch
+            if (receipt.lines.isEmpty()) {
+                navigate(Screen.Home)
+                show("No items found on this receipt.")
+                return@launch
+            }
+            val foods = loadGenericFoods()
+            _state.update { it.copy(receipt = ReceiptDraft(receipt.store, receipt.date, receiptRows(receipt, foods)), screen = Screen.Receipt) }
+            startReceiptSearches()
+        }
+    }
+
+    /** Matches each line from what is on the phone: remembered choices, the user's own foods, generic foods. */
+    private fun receiptRows(receipt: Receipt, foods: List<GenericFood>): List<ReceiptRow> {
+        val own = (_state.value.myFoods + _state.value.history.map { it.product } + _state.value.pantry.map { it.product })
+            .filterNot { ReceiptMatching.needsMatch(it) }
+        return receipt.lines.mapIndexed { index, line ->
+            val key = ReceiptMatching.key(receipt.store, line)
+            val remembered = ReceiptMatching.find(receiptMatches, key)
+            val local = if (remembered == null) ReceiptMatching.guesses(line, own) else emptyList()
+            val product = remembered ?: local.firstOrNull()?.takeIf { ReceiptMatching.confident(line, it) }
+            // Loose and weighed food (fruit, meat) is usually a generic food rather than a packaged product.
+            val generic = if (product == null && (line.weighed || line.pack == null)) genericGuesses(foods, line) else emptyList()
+            val ticked = line.food != false
+            ReceiptRow(
+                id = index,
+                line = line,
+                key = key,
+                ticked = ticked,
+                product = product,
+                guesses = if (product != null) emptyList() else (local + generic).distinctBy { it.barcode }.take(MAX_GUESSES),
+                grams = rowGrams(line, product)?.let(::formatGrams).orEmpty(),
+                queued = product == null && ticked && !line.weighed && ReceiptMatching.query(line.name).isNotEmpty(),
+            )
+        }
+    }
+
+    /** Generic foods named like the line: all its words, else its longest word that finds something. */
+    private fun genericGuesses(foods: List<GenericFood>, line: ReceiptLine): List<Product> {
+        val words = ReceiptMatching.queryWords(line.name)
+        if (words.isEmpty()) return emptyList()
+        val languages = preferredLanguages()
+        val single = words.sortedByDescending { it.length }.flatMap { listOf(it, it.removeSuffix("s")) }.filter { it.length >= 4 }
+        val query = (listOf(words.joinToString(" ")) + single).distinct()
+            .firstOrNull { GenericFoods.search(foods, it, languages, limit = 1).isNotEmpty() } ?: return emptyList()
+        return GenericFoods.search(foods, query, languages, limit = MAX_GUESSES).map { food ->
+            food.toProduct(languages).let { findKnown(it.barcode) ?: it }
+        }
+    }
+
+    private fun rowGrams(line: ReceiptLine, product: Product?): Double? =
+        line.grams ?: product?.packageGrams?.let { it * line.packs }
+
+    /** Searches Open Food Facts for the queued lines in turn, waiting whenever the search limit is reached. */
+    private fun startReceiptSearches() {
+        receiptSearchJob?.cancel()
+        receiptSearchJob = viewModelScope.launch {
+            while (true) {
+                val draft = _state.value.receipt ?: break
+                val row = draft.rows.firstOrNull { it.queued } ?: break
+                if (row.product != null || !row.ticked) {
+                    updateRow(row.id) { it.copy(queued = false) }
+                    continue
+                }
+                val query = ReceiptMatching.query(row.line.name)
+                val key = FoodSearch.normalize(query)
+                val hits = searchCache[key] ?: run {
+                    val wait = SearchLimit.waitMillis(searchTimes, SystemClock.elapsedRealtime())
+                    if (wait > 0) delay(wait)
+                    searchTimes = SearchLimit.record(searchTimes, SystemClock.elapsedRealtime())
+                    repository.search(query, preferredLanguages()).getOrNull()?.also { searchCache[key] = it }
+                }.orEmpty()
+                val withNutrition = hits.filter { it.hasNutrition }
+                // Store data on Open Food Facts is patchy, so the store only narrows when it leaves something.
+                val found = FoodSearch.remote(withNutrition, draft.store).ifEmpty { withNutrition }
+                    .map { it.product }
+                    .filterNot { ReceiptMatching.packDisagrees(row.line, it) }
+                    .sortedByDescending { ReceiptMatching.score(row.line, it) }
+                updateRow(row.id) { current ->
+                    current.copy(queued = false, guesses = (current.guesses + found).distinctBy { it.barcode }.take(MAX_GUESSES))
+                }
+            }
+        }
+    }
+
+    private fun updateRow(id: Int, change: (ReceiptRow) -> ReceiptRow) = _state.update { state ->
+        val draft = state.receipt ?: return@update state
+        state.copy(receipt = draft.copy(rows = draft.rows.map { if (it.id == id) change(it) else it }))
+    }
+
+    fun toggleRow(id: Int) = updateRow(id) { it.copy(ticked = !it.ticked) }
+
+    fun setRowGrams(id: Int, text: String) = updateRow(id) { it.copy(grams = text) }
+
+    /** The user picked [product] for a row, from its guesses or by searching. */
+    fun pickForRow(id: Int, product: Product) {
+        _state.update { it.copy(matching = null) }
+        setRowMatch(id, product)
+    }
+
+    private fun setRowMatch(id: Int, product: Product) = updateRow(id) { row ->
+        row.copy(
+            product = product,
+            ticked = true,
+            rejected = false,
+            queued = false,
+            grams = row.grams.ifBlank { rowGrams(row.line, product)?.let(::formatGrams).orEmpty() },
+        )
+    }
+
+    /** "None of these" or "Change": offers the ways to find the product instead. */
+    fun rejectRowMatch(id: Int) = updateRow(id) { it.copy(product = null, rejected = true, queued = false) }
+
+    /** Opens [way] to find the product for row [id]; for [MatchWay.SCAN] the screen then starts the scanner. */
+    fun matchRow(id: Int, way: MatchWay) {
+        val draft = _state.value.receipt ?: return
+        val row = draft.rows.firstOrNull { it.id == id } ?: return
+        _state.update { it.copy(matching = MatchTarget.Row(id, row.line.name)) }
+        val query = ReceiptMatching.query(row.line.name)
+        when (way) {
+            MatchWay.SEARCH -> {
+                navigate(Screen.Search(query = query))
+                runSearch()
+            }
+            MatchWay.SCAN -> Unit
+            MatchWay.LABEL -> navigate(Screen.Manual(blankProduct(null).copy(name = row.line.name, brand = draft.store?.label)))
+            MatchWay.GENERIC -> openGenericSearch(query)
+            MatchWay.BY_HAND -> navigate(Screen.Manual(blankProduct(null).copy(name = query), generic = true))
+        }
+    }
+
+    /** Puts the ticked rows into the pantry as unopened packs; unmatched ones as "needs a match". */
+    fun addReceiptToPantry() {
+        val draft = _state.value.receipt ?: return
+        val rows = draft.rows.filter { it.ticked }
+        if (rows.isEmpty()) {
+            show("Tick the items to keep in the pantry.")
+            return
+        }
+        rows.firstOrNull { it.gramsValue == null }?.let {
+            show("Enter the grams for ${it.line.name}.")
+            return
+        }
+        val now = System.currentTimeMillis()
+        val bought = draft.date?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+        val items = rows.map { row ->
+            val grams = row.gramsValue!!
+            PantryItem(
+                id = UUID.randomUUID().toString(),
+                product = row.product ?: ReceiptMatching.placeholder(draft.store, row.line),
+                gramsLeft = grams,
+                totalGrams = grams,
+                openedAtMillis = now,
+                opened = false,
+                boughtAtMillis = bought,
+                receiptKey = row.key,
+            )
+        }
+        rememberMatches(rows.mapNotNull { row -> row.product?.let { row.key to it } })
+        updatePantry(Pantry.addBought(_state.value.pantry, items))
+        discardReceipt()
+        val unmatched = items.count { it.needsMatch }
+        val added = if (items.size == 1) "Added 1 item to the pantry" else "Added ${items.size} items to the pantry"
+        show(if (unmatched == 0) "$added." else "$added; $unmatched still need a match.")
+    }
+
+    fun discardReceipt() {
+        receiptSearchJob?.cancel()
+        _state.update { it.copy(receipt = null, matching = null, screen = Screen.Home) }
+    }
+
+    private fun rememberMatches(choices: List<Pair<String, Product>>) {
+        if (choices.isEmpty()) return
+        receiptMatches = choices.fold(receiptMatches) { list, (key, product) -> ReceiptMatching.remember(list, key, product) }
+        val text = ReceiptMatching.encode(receiptMatches)
+        viewModelScope.launch { receiptMatchesStore.write(text) }
     }
 
     fun messageShown() = _state.update { it.copy(message = null) }
@@ -596,6 +896,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val MANUAL_SOURCE = "Manual"
         private const val UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000L
         private const val SEARCH_CACHE_SIZE = 20
+        private const val MAX_GUESSES = 3
         private const val GENERIC_FOODS_ASSET = "generic_foods.json"
         private const val USER_AGENT = "FoodLogger-Android/0.1 (https://github.com/RLi43/FoodLogger)"
 

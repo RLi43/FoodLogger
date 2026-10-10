@@ -1,0 +1,33 @@
+Epalinges
+07.10.26 12:27 01259 00999999 007 0001116
+Article Quantité Prix Action Total Infos
+Betty Bossi FG Korean Beef 350g 1.0 11.95 11.95 0 A
+Yakult Original 6x65ml 1.0 5.10 5.10 0 A
+Yakult Plus 6x65ml 1.0 5.10 5.10 0 A
+Bon Yakult -2.10
+SommeCHF 20.05
+VisaDebit 20.05
+Débit VisaDebit
+XXXXXX******0000
+07.10.26
+#00000000*0000/XXXXXX#
+Total-EFT CHF 20.05
+COOP SOCIETE COOPERATIVE, CHE-116.311.185 TVA
+CD TVA% TOTAL TVA
+0 2.60 20.05 0.51
+Action saisi encaissé
+@ Bon SuPo Coca Cola 1 0
+@ Bon Emmi Energy Milk 1 0
+@ Bon lait condensé 1 0
+@ Bon Redefine 1 0
+@ Bon Rivella 33cl 1 0
+@ Bon Yakult 1 1
+@ Bon Focus Water 1 0
+No SUPERCARD: 2500000000000
+ANCIENS POINTS SOLDE 3336
+SOUS-/TOTAL EXCL* 20
+SUPERPOINTS SUR ACHAT 20
+NOUVEAUX POINTS SOLDE 3356
+Nous vous remercions de votre visite
+9900070125907102600020051116
+07.10.26 12:27 01259 00999999 007 0001116
