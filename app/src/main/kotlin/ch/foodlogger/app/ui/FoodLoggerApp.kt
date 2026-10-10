@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.foodlogger.app.HealthStatus
 import ch.foodlogger.app.MainViewModel
+import ch.foodlogger.app.MatchWay
 import ch.foodlogger.app.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,6 +36,8 @@ fun FoodLoggerApp(
     onScanPhoto: () -> Unit,
     onPhotographLabel: () -> Unit,
     onPickLabel: () -> Unit,
+    onPickReceipt: () -> Unit,
+    onPhotographReceipt: () -> Unit,
     onGrantPermission: () -> Unit,
     onInstallHealthConnect: () -> Unit,
 ) {
@@ -52,12 +55,20 @@ fun FoodLoggerApp(
         viewModel.messageShown()
     }
     BackHandler(enabled = state.screen != Screen.Home) {
-        // Leaving an entry's edit returns to the Today page it was opened from.
-        if ((state.screen as? Screen.Portion)?.editing != null) viewModel.openToday() else viewModel.goHome()
+        when {
+            // Leaving an entry's edit returns to the Today page it was opened from.
+            (state.screen as? Screen.Portion)?.editing != null -> viewModel.openToday()
+            state.screen == Screen.Receipt || state.screen == Screen.ReceiptReading -> viewModel.discardReceipt()
+            else -> viewModel.goHome()
+        }
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(titleFor(state.screen)) }) },
+        topBar = {
+            // While looking for the product of a receipt line or pantry pack, the title says which one.
+            val matching = state.matching?.takeIf { state.screen != Screen.Receipt }
+            TopAppBar(title = { Text(matching?.let { "Product for: ${it.name}" } ?: titleFor(state.screen), maxLines = 1) })
+        },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         val modifier = Modifier.fillMaxSize().padding(padding)
@@ -69,7 +80,9 @@ fun FoodLoggerApp(
                 onSearch = viewModel::openSearch,
                 onReadLabel = viewModel::startLabelEntry,
                 onGenericEntry = viewModel::startGenericEntry,
-                onGenericSearch = viewModel::openGenericSearch,
+                onGenericSearch = { viewModel.openGenericSearch() },
+                onPickReceipt = onPickReceipt,
+                onPhotographReceipt = onPhotographReceipt,
                 onMyFoods = viewModel::openMyFoods,
                 onFood = viewModel::selectFood,
                 onRemoveFromHistory = viewModel::removeFromHistory,
@@ -143,6 +156,28 @@ fun FoodLoggerApp(
                 onDelete = viewModel::deleteMyFood,
                 modifier = modifier,
             )
+            Screen.ReceiptReading -> Box(modifier, contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator()
+                    Text("Reading the receipt…")
+                }
+            }
+            Screen.Receipt -> state.receipt?.let { draft ->
+                ReceiptScreen(
+                    draft = draft,
+                    onToggle = { viewModel.toggleRow(it.id) },
+                    onGrams = { row, text -> viewModel.setRowGrams(row.id, text) },
+                    onPick = { row, product -> viewModel.pickForRow(row.id, product) },
+                    onReject = { viewModel.rejectRowMatch(it.id) },
+                    onMatch = { row, way ->
+                        viewModel.matchRow(row.id, way)
+                        if (way == MatchWay.SCAN) onScan()
+                    },
+                    onAdd = viewModel::addReceiptToPantry,
+                    onDiscard = viewModel::discardReceipt,
+                    modifier = modifier,
+                )
+            }
             Screen.Today -> TodayScreen(
                 entries = state.today,
                 onEdit = viewModel::editEntry,
@@ -161,4 +196,5 @@ private fun titleFor(screen: Screen) = when (screen) {
     Screen.MyFoods -> "My foods"
     is Screen.GenericSearch -> "Search generic food"
     Screen.Today -> "Today"
+    Screen.ReceiptReading, Screen.Receipt -> "Receipt"
 }

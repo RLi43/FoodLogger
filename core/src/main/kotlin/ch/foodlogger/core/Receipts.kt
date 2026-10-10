@@ -87,8 +87,27 @@ object Receipts {
 
     /** Lines that end the item list. */
     private val END = Regex(
-        "^(total|totale|somme|summe|zwischensumme|sous-total|subtotale|arrondi|rundung|arrotondamento|vous economisez|sie sparen|risparmiate|aldi preis|prix aldi|prezzo aldi|-{5,})\\b.*",
+        "^(total|totale|somme|summe|zwischensumme|sous-total|subtotale|arrondi|rundung|arrotondamento|vous economisez|sie sparen|risparmiate|aldi preis|prix aldi|prezzo aldi|-{5,})(\\b|chf).*",
     )
+
+    /**
+     * Rebuilds printed lines from text recognised in a photo: recognition often splits a receipt line into
+     * the name and the price, so pieces whose vertical centres are within half a line height are joined,
+     * left to right.
+     */
+    fun rows(pieces: List<OcrLine>): List<String> {
+        val rows = mutableListOf<MutableList<OcrLine>>()
+        for (piece in pieces.sortedBy { it.top + it.bottom }) {
+            val center = (piece.top + piece.bottom) / 2.0
+            val height = (piece.bottom - piece.top).coerceAtLeast(1)
+            val row = rows.lastOrNull()?.takeIf { row ->
+                val rowCenter = row.sumOf { (it.top + it.bottom) / 2.0 } / row.size
+                kotlin.math.abs(center - rowCenter) < height / 2.0
+            }
+            if (row != null) row += piece else rows += mutableListOf(piece)
+        }
+        return rows.map { row -> row.sortedBy { it.left }.joinToString(" ") { it.text } }
+    }
 
     fun parse(lines: List<String>): Receipt {
         val clean = lines.map { it.replace(' ', ' ').trim().replace(Regex("\\s+"), " ") }.filter { it.isNotEmpty() }

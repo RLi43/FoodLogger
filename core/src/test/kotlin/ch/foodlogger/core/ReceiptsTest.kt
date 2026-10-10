@@ -115,4 +115,15 @@ class ReceiptsTest {
         assertEquals(1, line.packs)
         assertFalse(ReceiptLine("Avocat", quantity = 2.0).grams != null)
     }
+
+    @Test
+    fun photoPiecesJoinIntoLines() {
+        val pieces = listOf(
+            OcrLine("11.49 A", 600, 104, 700, 124),
+            OcrLine("290456 Rib-eye", 10, 100, 300, 120),
+            OcrLine("0.256 kg x 44.90 CHF/kg", 60, 130, 500, 150),
+            OcrLine("ALDI SUISSE AG", 200, 10, 500, 30),
+        )
+        assertEquals(listOf("ALDI SUISSE AG", "290456 Rib-eye 11.49 A", "0.256 kg x 44.90 CHF/kg"), Receipts.rows(pieces))
+    }
 }

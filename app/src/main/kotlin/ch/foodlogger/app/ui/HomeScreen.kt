@@ -46,6 +46,8 @@ fun HomeScreen(
     onReadLabel: () -> Unit,
     onGenericEntry: () -> Unit,
     onGenericSearch: () -> Unit,
+    onPickReceipt: () -> Unit,
+    onPhotographReceipt: () -> Unit,
     onMyFoods: () -> Unit,
     onFood: (Product) -> Unit,
     onRemoveFromHistory: (Product) -> Unit,
@@ -107,8 +109,14 @@ fun HomeScreen(
                 Text(if (state.myFoods.isEmpty()) "My foods" else "My foods (${state.myFoods.size})")
             }
         }
+        item { SectionTitle("Pantry") }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPickReceipt, modifier = Modifier.weight(1f)) { Text("Add receipt") }
+                OutlinedButton(onClick = onPhotographReceipt, modifier = Modifier.weight(1f)) { Text("Photograph receipt") }
+            }
+        }
         if (state.pantry.isNotEmpty()) {
-            item { SectionTitle("Pantry") }
             items(state.pantry, key = { "pantry-${it.id}" }) { item ->
                 Column {
                     PantryRow(item, onOpen = { onPantryItem(item) }, onEatOne = { onEatOne(item) }, onDelete = { pendingPantryDelete = item })
@@ -173,10 +181,20 @@ private fun UpdateBanner(release: AppRelease, updating: Boolean, onInstall: () -
 /** A kept pack: what is left and since when, "Eat 1" (when a serving is known) and Delete. */
 @Composable
 private fun PantryRow(item: PantryItem, onOpen: () -> Unit, onEatOne: () -> Unit, onDelete: () -> Unit) {
-    val days = Pantry.daysOpen(item, System.currentTimeMillis(), ZoneId.systemDefault())
-    val opened = when (days) {
-        0L -> "opened today"
-        1L -> "opened yesterday"
+    val now = System.currentTimeMillis()
+    val zone = ZoneId.systemDefault()
+    val days = Pantry.daysOpen(item, now, zone)
+    val opened = when {
+        item.needsMatch -> "Tap to pick the product"
+        !item.opened -> item.boughtAtMillis?.let { bought ->
+            when (val ago = Pantry.daysOpen(item.copy(openedAtMillis = bought), now, zone)) {
+                0L -> "unopened, bought today"
+                1L -> "unopened, bought yesterday"
+                else -> "unopened, bought $ago days ago"
+            }
+        } ?: "unopened"
+        days == 0L -> "opened today"
+        days == 1L -> "opened yesterday"
         else -> "opened $days days ago"
     }
     ListItem(
