@@ -11,6 +11,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.IntentCompat
 import androidx.health.connect.client.PermissionController
 import ch.foodlogger.app.ui.FoodLoggerApp
 import ch.foodlogger.app.ui.FoodLoggerTheme
@@ -26,6 +27,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var takeLabelPhoto: ActivityResultLauncher<Uri>
     private lateinit var pickLabelPhoto: ActivityResultLauncher<PickVisualMediaRequest>
     private lateinit var pickBarcodePhoto: ActivityResultLauncher<PickVisualMediaRequest>
+    private lateinit var pickReceipt: ActivityResultLauncher<Array<String>>
+    private lateinit var takeReceiptPhoto: ActivityResultLauncher<Uri>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +46,14 @@ class MainActivity : ComponentActivity() {
         pickBarcodePhoto = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             uri?.let(viewModel::scanBarcodePhoto)
         }
+        pickReceipt = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { viewModel.openReceipt(it, null) }
+        }
+        takeReceiptPhoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+            if (saved) viewModel.openReceipt(viewModel.receiptReader.photoUri(), "image/jpeg")
+        }
+        // Opened from another app's Share menu with a receipt; not again when the activity is recreated.
+        if (savedInstanceState == null) openSharedReceipt(intent)
 
         enableEdgeToEdge()
         setContent {
@@ -53,10 +64,32 @@ class MainActivity : ComponentActivity() {
                     onScanPhoto = { pickBarcodePhoto.launch(imageOnly()) },
                     onPhotographLabel = ::photographLabel,
                     onPickLabel = ::pickLabel,
+                    onPickReceipt = { pickReceipt.launch(arrayOf("application/pdf", "image/*")) },
+                    onPhotographReceipt = ::photographReceipt,
                     onGrantPermission = { requestPermissions.launch(HealthConnectSink.PERMISSIONS) },
                     onInstallHealthConnect = ::openHealthConnectInStore,
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openSharedReceipt(intent)
+    }
+
+    private fun openSharedReceipt(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java) ?: return
+        viewModel.openReceipt(uri, intent.type)
+    }
+
+    private fun photographReceipt() {
+        try {
+            takeReceiptPhoto.launch(viewModel.receiptReader.photoUri())
+        } catch (e: ActivityNotFoundException) {
+            // No camera app: a saved photo or PDF still works.
+            pickReceipt.launch(arrayOf("application/pdf", "image/*"))
         }
     }
 

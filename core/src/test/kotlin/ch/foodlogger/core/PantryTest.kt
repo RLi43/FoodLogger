@@ -87,4 +87,50 @@ class PantryTest {
         val old = """[{"barcode":"1","name":"Old","per100g":{"kcal":10.0},"servingGrams":30.0,"source":"Manual"}]"""
         assertNull(MyFoods.decode(old).single().packageGrams)
     }
+
+    @Test
+    fun oldPantryFilesLoadAsOpenedPacks() {
+        val old = """[{"id":"a","product":{"barcode":"761","name":"Cookies","source":"Open Food Facts"},"gramsLeft":150.0,"openedAtMillis":5}]"""
+        val item = Pantry.decode(old).single()
+        assertTrue(item.opened)
+        assertNull(item.boughtAtMillis)
+        assertFalse(item.needsMatch)
+    }
+
+    @Test
+    fun boughtPacksGoAfterOpenedOnesAndOpenWhenEaten() {
+        val opened = item("a")
+        val older = item("b").copy(opened = false)
+        val bought = item("c", left = 200.0).copy(opened = false, boughtAtMillis = 1)
+        val list = Pantry.addBought(listOf(opened, older), listOf(bought))
+        assertEquals(listOf("a", "c", "b"), list.map { it.id })
+
+        val eaten = Pantry.eat(list, "c", 25.0, nowMillis = 99)
+        assertEquals(listOf("c", "a", "b"), eaten.map { it.id })
+        assertTrue(eaten.first().opened)
+        assertEquals(99, eaten.first().openedAtMillis)
+        assertEquals(175.0, eaten.first().gramsLeft)
+        // Eating an opened pack keeps its place and opening time.
+        assertEquals(listOf("a", "c", "b"), Pantry.eat(list, "a", 25.0, nowMillis = 99).map { it.id })
+        assertEquals(0, Pantry.eat(list, "a", 25.0, nowMillis = 99).first().openedAtMillis)
+    }
+
+    @Test
+    fun findPrefersTheOpenedPack() {
+        val unopened = item("u").copy(opened = false)
+        val opened = item("o")
+        assertEquals("o", Pantry.find(listOf(unopened, opened), "761")?.id)
+        assertEquals("u", Pantry.find(listOf(unopened), "761")?.id)
+    }
+
+    @Test
+    fun matchReplacesThePlaceholder() {
+        val placeholder = ReceiptMatching.placeholder(Store.COOP, ReceiptLine("Cookies 200g"))
+        val list = listOf(PantryItem("r", placeholder, 200.0, 200.0, 0, opened = false, receiptKey = "COOP:cookies 200g"))
+        assertTrue(list.single().needsMatch)
+        val matched = Pantry.match(list, "r", cookies).single()
+        assertFalse(matched.needsMatch)
+        assertEquals(cookies, matched.product)
+        assertEquals(200.0, matched.gramsLeft)
+    }
 }

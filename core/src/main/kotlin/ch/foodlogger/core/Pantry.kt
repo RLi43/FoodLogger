@@ -9,8 +9,10 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 /**
- * The rest of an opened pack the user keeps to eat later. Tracked in grams, so any portion can be
- * taken from it; shown in servings when the product declares a serving size.
+ * A pack the user keeps to eat later: the rest of an opened pack, or an unopened one added from a receipt.
+ * Tracked in grams, so any portion can be taken from it; shown in servings when the product declares a
+ * serving size. A pack from a receipt that was not matched to a product yet carries a placeholder product
+ * ([ReceiptMatching.needsMatch]) and its [receiptKey], so the match chosen later is remembered.
  */
 @Serializable
 data class PantryItem(
@@ -19,8 +21,15 @@ data class PantryItem(
     val gramsLeft: Double,
     /** Grams in the pack when it was opened; null when the pack size is unknown. */
     val totalGrams: Double? = null,
+    /** When the pack was opened; for an unopened pack, when it was added. */
     val openedAtMillis: Long,
+    val opened: Boolean = true,
+    /** Purchase day from the receipt, at the start of that day. */
+    val boughtAtMillis: Long? = null,
+    val receiptKey: String? = null,
 ) {
+    val needsMatch: Boolean get() = ReceiptMatching.needsMatch(product)
+
     val servingsLeft: Double? get() = product.servingGrams?.let { gramsLeft / it }
     val servingsTotal: Double? get() = product.servingGrams?.let { serving -> totalGrams?.let { it / serving } }
 
@@ -28,7 +37,10 @@ data class PantryItem(
     val oneServingGrams: Double? get() = product.servingGrams?.coerceAtMost(gramsLeft)
 }
 
-/** Opened packs, newest first, persisted by the app as JSON. Packs leave when finished or deleted. */
+/**
+ * Kept packs, persisted by the app as JSON: opened packs newest first, then unopened ones.
+ * Packs leave when finished or deleted.
+ */
 object Pantry {
     /** Less than this is crumbs: the pack counts as finished. */
     const val FINISHED_BELOW_GRAMS = 0.5
@@ -47,15 +59,33 @@ object Pantry {
     fun keep(list: List<PantryItem>, item: PantryItem): List<PantryItem> =
         if (item.gramsLeft < FINISHED_BELOW_GRAMS) list else listOf(item) + list.filter { it.id != item.id }
 
-    /** Takes [grams] from the pack [id]; a pack with nothing left is removed. */
-    fun eat(list: List<PantryItem>, id: String, grams: Double): List<PantryItem> = list.mapNotNull {
-        if (it.id != id) it else it.copy(gramsLeft = it.gramsLeft - grams).takeIf { left -> left.gramsLeft >= FINISHED_BELOW_GRAMS }
+    /** Adds unopened packs bought on a receipt, after the opened packs. */
+    fun addBought(list: List<PantryItem>, items: List<PantryItem>): List<PantryItem> {
+        val (opened, unopened) = list.partition { it.opened }
+        return opened + items + unopened
     }
+
+    /**
+     * Takes [grams] from the pack [id]; a pack with nothing left is removed. An unopened pack counts as opened
+     * at [nowMillis] and moves up to the opened packs.
+     */
+    fun eat(list: List<PantryItem>, id: String, grams: Double, nowMillis: Long = System.currentTimeMillis()): List<PantryItem> {
+        val item = list.firstOrNull { it.id == id } ?: return list
+        val left = item.copy(gramsLeft = item.gramsLeft - grams)
+        if (left.gramsLeft < FINISHED_BELOW_GRAMS) return list.filter { it.id != id }
+        if (item.opened) return list.map { if (it.id == id) left else it }
+        return listOf(left.copy(opened = true, openedAtMillis = nowMillis)) + list.filter { it.id != id }
+    }
+
+    /** Gives the pack [id] the product the user matched it to. */
+    fun match(list: List<PantryItem>, id: String, product: Product): List<PantryItem> =
+        list.map { if (it.id == id) it.copy(product = product) else it }
 
     fun remove(list: List<PantryItem>, id: String): List<PantryItem> = list.filter { it.id != id }
 
-    /** The most recently opened pack of the product with [barcode], if one is kept. */
-    fun find(list: List<PantryItem>, barcode: String): PantryItem? = list.firstOrNull { it.product.barcode == barcode }
+    /** The most recently opened pack of the product with [barcode], else an unopened one, if one is kept. */
+    fun find(list: List<PantryItem>, barcode: String): PantryItem? =
+        list.filter { it.product.barcode == barcode }.let { packs -> packs.firstOrNull { it.opened } ?: packs.firstOrNull() }
 
     /** Calendar days since the pack was opened, in [zone]: 0 today, 1 yesterday. */
     fun daysOpen(item: PantryItem, nowMillis: Long, zone: ZoneId): Long {

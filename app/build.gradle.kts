@@ -78,6 +78,11 @@ dependencies {
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
     // Barcodes in saved photos (the code scanner above only works with the live camera).
     implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1")
+    // Text of receipt PDFs shared from the Migros and Coop apps. Bouncy Castle is only needed for encrypted
+    // PDFs and would add several MB, so it is left out; such a PDF is read like a photo instead.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0") {
+        exclude(group = "org.bouncycastle")
+    }
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
 }

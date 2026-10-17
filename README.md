@@ -51,6 +51,19 @@ one serving for the current meal, tapping the pack logs another amount, and *Del
 the pantry when it is finished, and scanning it again opens the kept pack (with *New pack* for a fresh one).
 Deleting a logged entry later does not put it back into the pack; only *Undo* right after logging does.
 
+**Receipts** fill the pantry with what you bought. Share a receipt from the Migros or Coop app to FoodLogger
+(it appears in the Share menu for PDFs and photos), or use *Add receipt* (a PDF or photo) or *Photograph receipt*
+(a paper receipt, e.g. from Aldi) under Pantry on the home screen. Everything is read on the phone. The receipt
+becomes a checklist: food lines start ticked (non-food lines, recognised by their VAT rate, are hidden under
+*Not food*), each with grams from its weight or the pack size in its name. Receipts carry no barcodes, so each
+line is matched by name: first to a product you picked for that line before, then to your own foods, generic
+foods for loose and weighed items, and Open Food Facts in the background (within the search limit, so a long
+receipt fills in over a few minutes). Pick one of the guesses, or *Search*, *Scan barcode*, *Read label*,
+*Generic food* or *Enter by hand*. Ticked lines become unopened packs; a line without a product goes in under
+its receipt name and asks for the product the first time you eat from it. Every choice is remembered for that
+store and receipt line, so the next receipt with the same product matches by itself. Supported layouts: Migros
+and Coop PDFs or paper receipts and Aldi Suisse paper receipts; other receipts are read as "name … price" lines.
+
 If a product is missing or has no nutrition values, a per-100 g form opens (pre-filled with what is known).
 There, **Scan nutrition label** takes a photo of the table (or *From gallery* picks one) and fills in the
 values with on-device text recognition (ML Kit via Play services, nothing is uploaded). The parser reads German,
