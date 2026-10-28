@@ -678,7 +678,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 show("Could not read the receipt: ${e.message ?: e.javaClass.simpleName}")
                 return@launch
             }
-            val receipt = Receipts.parse(lines)
+            // Parsing and matching search the whole generic food list for every line: off the main thread.
+            val receipt = withContext(Dispatchers.Default) { Receipts.parse(lines) }
             if (_state.value.screen != Screen.ReceiptReading) return@launch
             if (receipt.lines.isEmpty()) {
                 navigate(Screen.Home)
@@ -686,7 +687,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             val foods = loadGenericFoods()
-            _state.update { it.copy(receipt = ReceiptDraft(receipt.store, receipt.date, receiptRows(receipt, foods)), screen = Screen.Receipt) }
+            val rows = withContext(Dispatchers.Default) { receiptRows(receipt, foods) }
+            if (_state.value.screen != Screen.ReceiptReading) return@launch
+            _state.update { it.copy(receipt = ReceiptDraft(receipt.store, receipt.date, rows), screen = Screen.Receipt) }
             startReceiptSearches()
         }
     }
