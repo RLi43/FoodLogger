@@ -22,6 +22,15 @@ data class GenericFood(
     fun name(languages: List<String>): String =
         languages.firstNotNullOfOrNull { names[it] } ?: names.values.first()
 
+    /** All names, normalised once for searching (delegated, so not serialised). */
+    internal val searchNames: String by lazy { names.values.joinToString(" ") { FoodSearch.normalize(it) } }
+
+    /** Names, synonyms and category, normalised once for searching. */
+    internal val searchAll: String by lazy {
+        listOf(searchNames, synonyms.values.joinToString(" ") { FoodSearch.normalize(it) }, FoodSearch.normalize(category.orEmpty()))
+            .joinToString(" ")
+    }
+
     fun toProduct(languages: List<String>) = Product(
         barcode = "${GenericFoods.ID_PREFIX}$id",
         name = name(languages),
@@ -86,9 +95,8 @@ object GenericFoods {
         val words = FoodSearch.words(query)
         if (words.isEmpty()) return emptyList()
         return foods.mapNotNull { food ->
-            val names = food.names.values.joinToString(" ") { FoodSearch.normalize(it) }
-            val all = listOf(names, food.synonyms.values.joinToString(" "), food.category.orEmpty())
-                .joinToString(" ") { FoodSearch.normalize(it) }
+            val names = food.searchNames
+            val all = food.searchAll
             if (!words.all { it in all }) return@mapNotNull null
             val shown = FoodSearch.normalize(food.name(languages))
             val nameWords = names.split(' ')
