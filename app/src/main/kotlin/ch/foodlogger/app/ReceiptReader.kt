@@ -34,7 +34,8 @@ class ReceiptReader(private val context: Context) {
     }
 
     suspend fun read(uri: Uri, mimeType: String?): List<String> {
-        if (!isPdf(uri, mimeType)) return recognize(InputImage.fromFilePath(context, uri))
+        // Decoding the photo takes a moment, so it happens off the main thread.
+        if (!isPdf(uri, mimeType)) return recognize(withContext(Dispatchers.IO) { InputImage.fromFilePath(context, uri) })
         // A PDF without a text layer (a scan) is read like a photo.
         return pdfText(uri).takeIf { lines -> lines.any { it.isNotBlank() } } ?: pdfPages(uri)
     }
